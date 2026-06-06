@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 import paramiko
 
@@ -35,16 +35,26 @@ class SSHError(RuntimeError):
 
 
 def resolve_key_path(ticket_id: Optional[int] = None) -> str:
-    """An explicit existing key wins; otherwise fall back to caseN_key.pem (N = ticket-7000)."""
+    """Resolve the SSH key: an explicit key if present, else the per-VM caseN key.
 
+    Raises SSHError naming the exact path(s) checked for THIS ticket when neither
+    exists — the operator sees the concrete filename to drop in (e.g. case1_key.pem
+    for ticket 7001), not a "ticket id - 7000" formula to decode.
+    """
+    checked: List[str] = []
     explicit = os.path.expanduser(settings.SSH_PRIVATE_KEY_PATH or "")
     if explicit and os.path.isfile(explicit):
         return explicit
+    if explicit:
+        checked.append(explicit)
     if ticket_id is not None:
         cand = os.path.join(os.path.expanduser(settings.SSH_KEY_DIR), f"case{ticket_id - 7000}_key.pem")
         if os.path.isfile(cand):
             return cand
-    return explicit
+        checked.append(cand)
+    looked = ", ".join(checked) if checked else "no path (SSH_PRIVATE_KEY_PATH is unset)"
+    raise SSHError(f"SSH key not found — looked for: {looked}. Set SSH_PRIVATE_KEY_PATH to your "
+                   ".pem, or drop the key at the path above.")
 
 
 def _load_key(path: str, passphrase: Optional[str]):
@@ -52,11 +62,8 @@ def _load_key(path: str, passphrase: Optional[str]):
 
     expanded = os.path.expanduser(path or "")
     if not expanded or not os.path.isfile(expanded):
-        raise SSHError(
-            f"SSH key not found (looked for {path!r}). Set SSH_PRIVATE_KEY_PATH to your .pem "
-            f"in .env, or place the per-VM key at {settings.SSH_KEY_DIR}/caseN_key.pem "
-            "(N = ticket id − 7000)."
-        )
+        raise SSHError(f"SSH key not found at {path!r} — set SSH_PRIVATE_KEY_PATH to your .pem "
+                       "or provide the per-VM key.")
     last: Optional[Exception] = None
     for loader in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
         try:

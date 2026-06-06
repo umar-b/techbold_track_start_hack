@@ -26,7 +26,8 @@ class Settings(BaseSettings):
 
     # SSH access to customer VMs.
     # Single-key mode: point SSH_PRIVATE_KEY_PATH at one .pem. Per-VM mode: leave it
-    # unset/missing and drop caseN_key.pem files in SSH_KEY_DIR (N = ticket_id - 7000).
+    # unset/missing and drop caseN_key.pem files in SSH_KEY_DIR, where N = ticket_id - 7000
+    # (ticket 7001 -> case1_key.pem, 7002 -> case2_key.pem, ...).
     SSH_PRIVATE_KEY_PATH: str = "/keys/key.pem"
     SSH_KEY_DIR: str = "/keys"
     SSH_USERNAME: str = "azureuser"

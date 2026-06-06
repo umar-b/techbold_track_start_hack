@@ -24,8 +24,18 @@ def test_per_vm_case_key_fallback(tmp_path, monkeypatch):
 
 
 def test_load_key_missing_path_gives_actionable_error():
-    """A missing/empty key path raises a clear, actionable SSHError, not a cryptic stack trace."""
+    """A missing key file raises a clear SSHError naming SSH_PRIVATE_KEY_PATH, not a stack trace."""
     with pytest.raises(ssh_runner.SSHError) as ei:
-        ssh_runner._load_key("", None)
+        ssh_runner._load_key("/nope/missing.pem", None)
+    assert "SSH_PRIVATE_KEY_PATH" in str(ei.value)
+
+
+def test_resolve_key_path_missing_names_concrete_case_file(tmp_path, monkeypatch):
+    """For ticket 7001 the error names case1_key.pem concretely — no 'ticket id - 7000' formula."""
+    monkeypatch.setattr(settings, "SSH_PRIVATE_KEY_PATH", "")
+    monkeypatch.setattr(settings, "SSH_KEY_DIR", str(tmp_path))
+    with pytest.raises(ssh_runner.SSHError) as ei:
+        ssh_runner.resolve_key_path(7001)
     msg = str(ei.value)
-    assert "SSH_PRIVATE_KEY_PATH" in msg and "caseN_key.pem" in msg
+    assert "case1_key.pem" in msg
+    assert "SSH_PRIVATE_KEY_PATH" in msg
