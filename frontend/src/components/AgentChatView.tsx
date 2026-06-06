@@ -25,7 +25,12 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
   const finished = status === "finished";
   const escalated = status === "escalated";
   const aborted = status === "aborted";
-  const working = starting || status === "analyzing" || status === "executing" || status === "verifying";
+  const working =
+    starting ||
+    status === "analyzing" ||
+    status === "executing" ||
+    status === "verifying" ||
+    (isAwaitingPlan && !plan); // awaiting approval but the plan event hasn't landed yet
 
   return (
     <div className="chat-layout">

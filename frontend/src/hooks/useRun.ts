@@ -6,7 +6,8 @@ const TERMINAL = ["finished", "aborted", "escalated"];
 
 type SseMessage =
   | { type: "step"; step: Step }
-  | { type: "status"; status: string };
+  | { type: "status"; status: string }
+  | { type: "plan"; plan: Run["plan"] };
 
 function mergeStep(run: Run, step: Step): Run {
   const steps = [...run.steps];
@@ -68,6 +69,9 @@ export function useRun(ticketId: number) {
       }
       if (msg.type === "step") {
         setRun((prev) => (prev ? mergeStep(prev, msg.step) : prev));
+      } else if (msg.type === "plan") {
+        // The proposed plan is not carried by step events; the backend pushes it here.
+        setRun((prev) => (prev ? { ...prev, plan: msg.plan } : prev));
       } else if (msg.type === "status") {
         setRun((prev) => (prev ? { ...prev, status: msg.status as Run["status"] } : prev));
         if (TERMINAL.includes(msg.status)) {
@@ -92,9 +96,13 @@ export function useRun(ticketId: number) {
     try {
       const r = await fn();
       if (!mounted.current) return;
-      // Don't let a stale POST snapshot overwrite a terminal status the SSE
-      // stream may have already delivered.
-      setRun((prev) => (prev && TERMINAL.includes(prev.status) ? prev : r));
+      // The POST returns immediately (async backend); SSE owns steps/plan, so only adopt
+      // the authoritative status here — never clobber SSE-streamed steps with the snapshot.
+      setRun((prev) => {
+        if (!prev) return r;
+        if (TERMINAL.includes(prev.status)) return prev; // SSE may already be terminal
+        return { ...prev, status: r.status };
+      });
       if (TERMINAL.includes(r.status)) {
         esRef.current?.close();
         esRef.current = null;

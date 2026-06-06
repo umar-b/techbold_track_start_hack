@@ -5,6 +5,7 @@ audit log is mirrored to a per-run file so the trail survives a restart.
 """
 from __future__ import annotations
 
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -27,6 +28,11 @@ class RunStore:
         # TODO: no idle-timeout eviction — a run parked at awaiting_plan_approval the
         # technician never resolves keeps its TCP connection until the process exits.
         self._sessions: Dict[str, SSHRunner] = {}
+        # Per-run lock serialising a command-execution against a close, so an abort on
+        # another thread cannot close the SSH transport mid-command (the run loop now
+        # runs on a background worker — ADR-0008).
+        self._locks: Dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
 
     def create(self, ticket_id: int) -> Dict[str, Any]:
         run_id = uuid.uuid4().hex[:12]
@@ -71,6 +77,15 @@ class RunStore:
         else:
             sess.ensure_connected()  # reconnect if the connection dropped during an approval wait
         return sess
+
+    def lock(self, run_id: str) -> threading.Lock:
+        """The per-run lock guarding command-execution vs. close (created on first use)."""
+        with self._locks_guard:
+            lock = self._locks.get(run_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[run_id] = lock
+            return lock
 
     def close_session(self, run_id: str) -> None:
         sess = self._sessions.pop(run_id, None)

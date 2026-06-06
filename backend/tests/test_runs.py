@@ -44,6 +44,13 @@ def env(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "")
     monkeypatch.setattr(main_mod, "_execute",
                         lambda run, system, command, timeout=None: CommandResult("ok", "", 0, 5))
+    # Run the background run-loop inline (with the same guard/cleanup) so assertions
+    # made right after a POST see the converged state.
+    monkeypatch.setattr(main_mod, "_submit", lambda fn, *a: main_mod._guarded(fn, *a))
+    # The store is a module singleton — isolate each test.
+    main_mod.store._runs.clear()
+    main_mod.store._audits.clear()
+    main_mod.store._sessions.clear()
     fake = FakePhoenix()
     app = create_app()
     app.dependency_overrides[get_phoenix] = lambda: fake
@@ -125,6 +132,31 @@ def test_reject_on_non_awaiting_returns_409(env, monkeypatch):
     rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
     # the run finished during analysis — there is nothing to reject
     assert client.post(f"/api/runs/{rid}/reject", json={}).status_code == 409
+
+
+def test_start_run_returns_immediately_before_analysis(env, monkeypatch):
+    client, _ = env
+    # Defer the background loop: the POST must return at once, before diagnostics run.
+    monkeypatch.setattr(main_mod, "_submit", lambda fn, *a: None)
+    run = client.post("/api/runs", json={"ticket_id": 7001}).json()
+    assert run["status"] == "analyzing"
+    assert run["steps"] == [] and run["plan"] is None
+
+
+def test_set_plan_keeps_no_plan_when_run_already_aborted():
+    # abort-during-analysis race: transition must raise before the plan is written
+    from app.runstate import IllegalTransition
+    run = {"id": "x", "ticket_id": 7001, "status": "aborted", "steps": [], "plan": None}
+    with pytest.raises(IllegalTransition):
+        main_mod._set_plan(run, {"root_cause": "c", "steps": [], "validation": []})
+    assert run["plan"] is None
+
+
+def test_second_concurrent_run_for_ticket_is_rejected(env, monkeypatch):
+    client, _ = env
+    monkeypatch.setattr(main_mod, "_submit", lambda fn, *a: None)  # leave the first run active
+    assert client.post("/api/runs", json={"ticket_id": 7001}).status_code == 200
+    assert client.post("/api/runs", json={"ticket_id": 7001}).status_code == 409
 
 
 def test_tickets_proxy(env):

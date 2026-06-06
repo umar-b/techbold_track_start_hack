@@ -1,19 +1,20 @@
 """FastAPI backend — technician workspace API + the human-in-the-loop run loop.
 
-The ERP token and SSH key live only here, never in the browser. The run advances
-synchronously inside the POST handlers (ADR-0008): starting a run or approving a
-plan auto-runs SAFE diagnostics until a gate, executes GATED steps only inside an
-approved plan, and never runs a BLOCKED command. Every action is audited and
-redacted. SSE streams the step list for live progress.
+The ERP token and SSH key live only here, never in the browser. Starting a run or
+approving a plan returns immediately and advances the run on a background worker
+(ADR-0008): SAFE diagnostics auto-run until a gate, GATED steps run only inside an
+approved plan, and a BLOCKED command never runs. Progress streams to the browser
+over SSE (steps, status, and the proposed plan). Every action is audited and redacted.
 
-Handlers are sync `def` (they do blocking SSH/LLM work, so FastAPI runs them in a
-threadpool) — never block an async route.
+Handlers are sync `def` (FastAPI runs them in a threadpool); the blocking SSH/LLM
+run loop is dispatched to a worker thread so the handler never blocks on it.
 """
 from __future__ import annotations
 
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
 from fastapi import Body, Depends, FastAPI, HTTPException
@@ -37,6 +38,46 @@ logging.basicConfig(level=logging.INFO)
 # Analysis converges to a plan: force a plan after the soft limit, escalate at the hard limit.
 DIAGNOSE_SOFT_LIMIT = 6
 DIAGNOSE_HARD_LIMIT = 10
+
+# The run loop advances on a background worker so POST handlers return immediately and
+# the browser sees diagnostics stream in over SSE (ADR-0008). `_submit` is overridden to
+# run inline in tests.
+_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="runloop")
+
+
+def _guarded(fn, *args) -> None:
+    """Run one run-loop phase: skip if already aborted, escalate on an unexpected error,
+    and always close the SSH session once the run is terminal."""
+    run = args[0]
+    try:
+        if is_terminal(run["status"]):  # aborted before the worker picked it up
+            return
+        fn(*args)
+    except Exception:  # noqa: BLE001
+        if is_terminal(run["status"]):
+            return  # an abort raced the loop (e.g. an illegal transition) — not an error
+        logging.getLogger("api").exception("run loop failed run_id=%s status=%s",
+                                           run.get("id"), run.get("status"))
+        try:
+            _escalate(run, "internal error in the run loop")
+        except Exception:  # noqa: BLE001
+            pass
+    finally:
+        _close_if_terminal(run)
+
+
+def _submit(fn, *args) -> None:
+    try:
+        _executor.submit(_guarded, fn, *args)
+    except RuntimeError:  # executor rejected/shut down — don't strand the run mid-phase
+        run = args[0]
+        logging.getLogger("api").exception("could not schedule run loop run_id=%s", run.get("id"))
+        try:
+            if not is_terminal(run["status"]):
+                _escalate(run, "could not schedule the run loop")
+        except Exception:  # noqa: BLE001
+            pass
+        _close_if_terminal(run)
 
 # --- Phoenix dependency (overridable in tests) ----------------------------- #
 _phoenix: Optional[PhoenixClient] = None
@@ -65,21 +106,23 @@ def _execute(run: Dict[str, Any], system: Dict[str, Any], command: str, timeout=
     an approval wait. Connection lifecycle (connect-retry, liveness) lives in the
     SSHRunner; this only adds reconnect-once on a dropped channel.
     """
-    try:
-        return store.session(run, system).run(command, timeout=timeout)
-    except SSHError:
-        store.close_session(run["id"])
-        return store.session(run, system).run(command, timeout=timeout)
+    with store.lock(run["id"]):  # block a concurrent abort from closing the session mid-command
+        try:
+            return store.session(run, system).run(command, timeout=timeout)
+        except SSHError:
+            store.close_session(run["id"])
+            return store.session(run, system).run(command, timeout=timeout)
 
 
 def _close_if_terminal(run: Dict[str, Any]) -> None:
     """Close the run's SSH session once it reaches a terminal status.
 
-    The single cleanup site (replacing four scattered ones); called at the route
-    boundary after a handler may have driven the run to a terminal state.
+    The single cleanup site; the per-run lock makes it wait for any in-flight command
+    so abort (on another thread) never closes the transport mid-exec.
     """
     if is_terminal(run["status"]):
-        store.close_session(run["id"])
+        with store.lock(run["id"]):
+            store.close_session(run["id"])
 
 
 # --- run helpers ----------------------------------------------------------- #
@@ -129,9 +172,11 @@ def _set_plan(run, action) -> None:
     steps = action.get("steps", []) or []
     for st in steps:
         st["risk"] = check_command(st.get("command", "")).tier.value
+    # Transition first: if an abort raced analysis this raises and leaves plan untouched
+    # (a terminal run must never carry a stale plan).
+    transition(run, RunStatus.AWAITING_PLAN_APPROVAL)
     run["plan"] = {"root_cause": action.get("root_cause", ""), "steps": steps,
                    "validation": action.get("validation", []) or []}
-    transition(run, RunStatus.AWAITING_PLAN_APPROVAL)
 
 
 def _escalate(run, reason: str) -> None:
@@ -147,6 +192,8 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
     audit = store.audit(run["id"])
     transition(run, RunStatus.ANALYZING)
     while True:
+        if is_terminal(run["status"]):  # aborted during analysis
+            return
         diagnostics = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
         if diagnostics >= DIAGNOSE_HARD_LIMIT:
             _escalate(run, "could not converge on a plan after diagnostics")
@@ -191,12 +238,18 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
     audit.add("plan_approved", steps=len(steps))
     fixes_ok = True
     for st in steps:
+        if is_terminal(run["status"]):  # aborted mid-execution
+            return
         step = _new_step(run, "fix", st.get("command", ""), st.get("rationale", ""),
                          expected=st.get("expected", ""))
         fixes_ok = _run_command(run, system, step, audit) and fixes_ok
+    if is_terminal(run["status"]):
+        return
     transition(run, RunStatus.VERIFYING)
     validation_ok = True
     for vc in validation:
+        if is_terminal(run["status"]):
+            return
         step = _new_step(run, "validate", vc, "Validate the fix")
         validation_ok = _run_command(run, system, step, audit) and validation_ok
     run["plan"] = None
@@ -227,6 +280,10 @@ def create_app() -> FastAPI:
     app = FastAPI(title="AI Service Desk Autopilot — Team Backend", version="1.0.0")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+    @app.on_event("shutdown")
+    def _shutdown():
+        _executor.shutdown(cancel_futures=True)
+
     @app.get("/health")
     def health():
         return {"status": "ok"}
@@ -247,14 +304,18 @@ def create_app() -> FastAPI:
 
     @app.post("/api/runs")
     def start_run(body: schemas.StartRunIn, phoenix: PhoenixClient = Depends(get_phoenix)):
+        active = next((r for r in store.all()
+                       if r["ticket_id"] == body.ticket_id and not is_terminal(r["status"])), None)
+        if active is not None:  # one active run per ticket — never two workers on one VM
+            raise HTTPException(409, f"A run is already active for ticket {body.ticket_id}")
         ticket = _erp(phoenix.get_ticket, body.ticket_id)
         system = _erp(phoenix.customer_system, body.ticket_id).get("system", {})
         run = store.create(body.ticket_id)
         store.audit(run["id"]).add("run_started", ticket_id=body.ticket_id,
                                    ticket_title=ticket.get("title", ""))
         _erp(phoenix.set_status, body.ticket_id, "PENDING")
-        _analyze(run, ticket, system, memory_mod.retrieve(ticket, system))
-        _close_if_terminal(run)
+        transition(run, RunStatus.ANALYZING)  # immediate feedback; the worker takes over
+        _submit(_analyze, run, ticket, system, memory_mod.retrieve(ticket, system))
         return run
 
     @app.get("/api/runs/{run_id}")
@@ -275,8 +336,8 @@ def create_app() -> FastAPI:
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
         steps = [s.model_dump() for s in body.steps] if body.steps is not None else None
-        _execute_and_verify(run, ticket, system, edited_steps=steps)
-        _close_if_terminal(run)
+        transition(run, RunStatus.EXECUTING)
+        _submit(_execute_and_verify, run, ticket, system, steps)
         return run
 
     @app.post("/api/runs/{run_id}/reject")
@@ -288,10 +349,10 @@ def create_app() -> FastAPI:
             raise HTTPException(409, f"Nothing to reject (status={run['status']})")
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
-        run["plan"] = None
         store.audit(run_id).add("plan_rejected")
-        _replan(run, ticket, system)
-        _close_if_terminal(run)
+        transition(run, RunStatus.ANALYZING)
+        run["plan"] = None
+        _submit(_replan, run, ticket, system)
         return run
 
     @app.post("/api/runs/{run_id}/abort")
@@ -350,15 +411,27 @@ def create_app() -> FastAPI:
     @app.get("/api/runs/{run_id}/events")
     def events(run_id: str):
         def gen():
-            last = 0
-            for _ in range(600):
+            sent_steps: Dict[int, str] = {}
+            plan_sent = False
+            for _ in range(1800):  # ~15 min keep-alive; the browser auto-reconnects past it
                 run = store.get(run_id)
                 if not run:
                     break
                 steps = run["steps"]
-                while last < len(steps):
-                    yield f"data: {json.dumps({'type': 'step', 'step': steps[last]})}\n\n"
-                    last += 1
+                # Re-emit a step whenever its payload changes (proposed -> executed + output),
+                # since the worker mutates a step in place after appending it.
+                for i in range(len(steps)):
+                    payload = json.dumps({"type": "step", "step": steps[i]})
+                    if sent_steps.get(i) != payload:
+                        sent_steps[i] = payload
+                        yield f"data: {payload}\n\n"
+                plan = run.get("plan")
+                if plan and not plan_sent:  # the proposed plan isn't carried by step events
+                    yield f"data: {json.dumps({'type': 'plan', 'plan': plan})}\n\n"
+                    plan_sent = True
+                elif not plan and plan_sent:  # explicitly clear it (execute / before a replan)
+                    yield f"data: {json.dumps({'type': 'plan', 'plan': None})}\n\n"
+                    plan_sent = False
                 yield f"data: {json.dumps({'type': 'status', 'status': run['status']})}\n\n"
                 if is_terminal(run["status"]):
                     break
