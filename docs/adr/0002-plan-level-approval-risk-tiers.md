@@ -1,30 +1,46 @@
-# Plan-level approval with SAFE / GATED / BLOCKED risk tiers
+# ADR-0002: Plan-level approval with SAFE / GATED / BLOCKED risk tiers
 
-**Status:** accepted
+**Date**: 2026-06-06
+**Status**: accepted
+**Deciders**: Team (umar-b + teammates)
+
+## Context
+
+The rubric requires a human confirmation for "every action" and rewards a visible
+plan-and-confirm step (C, 20 pts). The technician must stay in control without per-command
+tedium. We need an approval model that is both safe and usable.
+
+## Decision
 
 The technician approves a **Plan** (a ranked root cause + an ordered list of steps), not
-every individual command and not whole command *categories*. Each command carries a risk
-tier that governs how it runs:
+individual commands and not whole command categories. Each command carries a risk tier: **SAFE**
+(non-mutating reads — auto-run, always logged), **GATED** (state-changing — runs only inside an
+approved Plan), **BLOCKED** (hard-fail list — never runs). Two gates per Run: approve
+connect + diagnostics, then approve the fix Plan. Deviating from an approved Plan requires a new
+Plan and re-approval.
 
-- **SAFE** — non-mutating reads; auto-run without approval, always logged. Exception:
-  reading secret paths (`/etc/shadow`, `*.env`, keys) is BLOCKED, not SAFE.
-- **GATED** — state-changing; runs only as part of an approved Plan.
-- **BLOCKED** — the hard-fail list (e.g. `chmod -R 777` on system paths, DB drops,
-  disabling security, secret exfil); never runs, cannot be approved.
+## Alternatives Considered
 
-There are two approval gates per Run: (1) approve connecting + read-only diagnostics,
-(2) approve the fix Plan. Deviating from an approved Plan requires a new Plan and
-re-approval; nothing mutating ever runs silently.
+### Alternative 1: Per-category approval
+- **Pros**: fewest clicks.
+- **Cons**: approving the `config_edit` category blanket-authorises edits that did not exist at approval time; breaks "every action confirmed".
+- **Why not**: fails the rubric's human-control intent; the safety reviewers (who built the scan) will catch it.
 
-## Why
+### Alternative 2: Per-command approval
+- **Pros**: most literal "confirm every action"; bulletproof to a strict reviewer.
+- **Cons**: tedious for the technician across a multi-step fix.
+- **Why not**: rejected as too tedious; plan-level approval plus auto-run reads achieves control with far less friction.
 
-- The rubric requires a human confirmation for "every action" and rewards a "visible
-  plan-and-confirm step" (C, 20 pts). **Per-category** approval fails this — approving the
-  `config_edit` category blanket-authorises edits that didn't exist when the technician
-  clicked, which the safety reviewers (who built the scan) will catch.
-- **Per-command** approval satisfies the rubric but is too tedious for the technician.
-- Plan-level approval + risk tiers is the middle ground: a clean incident is ~two clicks,
-  reads are frictionless, and every state change is still inside something a human approved.
+## Consequences
 
-Category/risk remains in the UI as a display label only — the **risk tier**, enforced in
-code, decides approval. The model proposes; the safety layer disposes.
+### Positive
+- A clean incident is ~two clicks; reads are frictionless; every state change is inside something a human approved.
+- The risk tier is enforced in code, not by the model — the model proposes, the safety layer disposes.
+
+### Negative
+- Auto-running SAFE reads is slightly less literal than confirming every single command.
+
+### Risks
+- A strict safety reviewer could question auto-run reads. Mitigation: the connect + diagnostics
+  gate explicitly authorises read-only exploration, and secret-file reads are BLOCKED regardless
+  of tier (ADR-0004).

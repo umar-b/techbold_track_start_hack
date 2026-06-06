@@ -1,38 +1,44 @@
-# Trust the model to reason; guidebook is method + knowledge, not playbooks
+# ADR-0003: Trust the model to reason; guidebook is method + knowledge, not playbooks
 
-**Status:** accepted
+**Date**: 2026-06-06
+**Status**: accepted
+**Deciders**: Team (umar-b + teammates)
 
-The agent diagnoses by **reasoning over live evidence**, not by matching against
-hard-coded per-incident fix recipes. The Guidebook gives it (a) a diagnostic *method*
-(gather evidence → ranked hypotheses with evidence → test cheapest first → minimal fix →
-verify) and (b) reference knowledge about common Linux failure classes — as facts it may
-draw on, not as forced decision branches.
+## Context
 
-## Why
+Diagnosis quality drives the 35-point B block, graded on fresh, unseen incidents that reward
+generalisation over hard-coding. The available model is small (`gpt-5.4-nano`), but stronger
+models may be used later. We must decide how much of the reasoning to hard-code.
 
-- The B block is graded on **fresh, unseen incidents**, "rewarding generalisation over
-  hard-coding." Rigid playbooks only help on incidents we anticipated and look like the
-  hard-coding the grader is built to defeat. Free reasoning generalises to the unexpected.
-- It is model-agnostic: swapping the current small model (`gpt-5.4-nano`) for a stronger
-  one later strictly improves results with no rewrite. Playbooks would have to be
-  re-tuned.
+## Decision
 
-## The hard limits that are NOT left to reasoning
+The agent diagnoses by reasoning over live evidence, using a guidebook that supplies (a) a
+diagnostic *method* — gather evidence → ranked hypotheses with evidence → cheapest-first test →
+minimal fix → verify — and (b) reference knowledge of common Linux failure classes as facts it
+may draw on, not forced branches. Safety (ADR-0002) and persistence (ADR-0005) stay code-enforced
+invariants regardless of how the model reasons.
 
-Two things stay enforced in code as invariants regardless of how the model reasons, because
-they are guarantees, not judgments:
+## Alternatives Considered
 
-- **Safety** — the SAFE/GATED/BLOCKED tiers and approval gates (see ADR-0002).
-- **Persistence** — every fix is verified to survive a reboot (`is-enabled` / on-disk /
-  survives-restart), since a fragile fix caps the B "fix persists" point.
+### Alternative 1: Hard-coded per-failure-class playbooks
+- **Pros**: safer for a weak model on anticipated incidents.
+- **Cons**: brittle on unanticipated incidents; looks like the hard-coding the grader is built to defeat; needs re-tuning per model.
+- **Why not**: does not generalise to fresh incidents and is not model-agnostic.
 
-So: the model reasons about *what is wrong and how to fix it*; code enforces *what is safe
-and what counts as done*.
+### Alternative 2: Bare prompt, no guidebook
+- **Pros**: simplest.
+- **Cons**: a small model mis-ranks causes and proposes fragile or hallucinated fixes.
+- **Why not**: diagnosis quality too low for the B block.
 
-## Trade-off accepted
+## Consequences
 
-A small model reasoning freely can mis-diagnose. Mitigated by the structured
-hypothesis-with-evidence format, tight context (trim noisy command output before it
-re-enters the prompt), and memory that pre-fills plans as hypotheses-to-verify — never
-as actions-to-apply (see ADR-0001). The bet is that this beats brittle recipes on unseen
-incidents and ages better as models improve.
+### Positive
+- Generalises to unseen incidents; model-agnostic — swapping in a stronger model strictly improves results with no rewrite.
+
+### Negative
+- A small model reasoning freely can mis-diagnose.
+
+### Risks
+- nano mis-diagnosis. Mitigation: structured hypothesis-with-evidence output, context trimming of
+  noisy command output, and memory that pre-fills plans only as hypotheses-to-verify (ADR-0009),
+  never actions-to-apply.
