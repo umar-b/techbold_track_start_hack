@@ -13,6 +13,8 @@ from _env import load_env, require, ok, fail
 
 
 def _get(base: str, path: str, token: str):
+    """Run one authenticated GET against Phoenix using only stdlib tools."""
+
     req = urllib.request.Request(
         f"{base.rstrip('/')}{path}",
         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
@@ -22,6 +24,8 @@ def _get(base: str, path: str, token: str):
 
 
 def main() -> int:
+    """Check Phoenix auth first, then confirm tickets can be listed."""
+
     load_env()
     base = require("PHOENIX_API_BASE_URL")
     token = require("PHOENIX_API_TOKEN")

@@ -6,14 +6,20 @@ from app.phoenix_client import PhoenixClient, PhoenixError
 
 
 def make_client(handler, retries=2):
+    """Create a Phoenix client backed by an httpx mock transport."""
+
     return PhoenixClient(base_url="http://erp.test", token="tok", retries=retries,
                          backoff=0.0, transport=httpx.MockTransport(handler))
 
 
 def test_lists_tickets_with_bearer_and_query():
+    """Ticket listing should send auth and the chosen query parameters."""
+
     seen = {}
 
     def handler(req):
+        """Capture auth and URL, then return one ticket."""
+
         seen["auth"] = req.headers.get("authorization")
         seen["url"] = str(req.url)
         return httpx.Response(200, json=[{"id": 7001, "title": "x"}])
@@ -25,9 +31,13 @@ def test_lists_tickets_with_bearer_and_query():
 
 
 def test_404_raises_and_is_not_retried():
+    """Client errors are final because retrying bad input wastes time."""
+
     calls = {"n": 0}
 
     def handler(req):
+        """Always return a client error so retry count can be checked."""
+
         calls["n"] += 1
         return httpx.Response(404, json={"detail": "nope"})
 
@@ -37,9 +47,13 @@ def test_404_raises_and_is_not_retried():
 
 
 def test_5xx_is_retried_then_raises():
+    """Server errors are retried a small number of times before failing."""
+
     calls = {"n": 0}
 
     def handler(req):
+        """Always return a server error so retry behavior can be checked."""
+
         calls["n"] += 1
         return httpx.Response(503, text="busy")
 
@@ -49,9 +63,13 @@ def test_5xx_is_retried_then_raises():
 
 
 def test_status_and_activity_use_correct_verbs_and_paths():
+    """Write operations should hit the Phoenix paths required by the case."""
+
     seen = []
 
     def handler(req):
+        """Record the method and path for each write request."""
+
         seen.append((req.method, req.url.path))
         return httpx.Response(200, json={"ok": True})
 
@@ -63,7 +81,11 @@ def test_status_and_activity_use_correct_verbs_and_paths():
 
 
 def test_customer_system_path():
+    """The customer-system endpoint should return SSH target details."""
+
     def handler(req):
+        """Return the customer-system response shape from Phoenix."""
+
         return httpx.Response(200, json={"ticket_id": 7001, "system": {"ip": "1.2.3.4"}})
 
     out = make_client(handler).customer_system(7001)

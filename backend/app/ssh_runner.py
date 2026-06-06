@@ -20,6 +20,8 @@ from .config import settings
 
 @dataclass
 class CommandResult:
+    """Output from one SSH command."""
+
     stdout: str
     stderr: str
     exit_code: int
@@ -27,11 +29,14 @@ class CommandResult:
 
 
 class SSHError(RuntimeError):
+    """Raised when connecting or running a command fails."""
+
     pass
 
 
 def resolve_key_path(ticket_id: Optional[int] = None) -> str:
     """An explicit existing key wins; otherwise fall back to caseN_key.pem (N = ticket-7000)."""
+
     explicit = os.path.expanduser(settings.SSH_PRIVATE_KEY_PATH or "")
     if explicit and os.path.isfile(explicit):
         return explicit
@@ -43,6 +48,8 @@ def resolve_key_path(ticket_id: Optional[int] = None) -> str:
 
 
 def _load_key(path: str, passphrase: Optional[str]):
+    """Try the common SSH key formats used by the hackathon VMs."""
+
     last: Optional[Exception] = None
     for loader in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
         try:
@@ -53,8 +60,12 @@ def _load_key(path: str, passphrase: Optional[str]):
 
 
 class SSHRunner:
+    """Context manager that opens one SSH connection and runs commands on it."""
+
     def __init__(self, host: str, port: int = 22, username: Optional[str] = None,
                  key_path: Optional[str] = None, ticket_id: Optional[int] = None):
+        """Store connection settings without opening the network connection yet."""
+
         self.host = host
         self.port = port or 22
         self.username = username or settings.SSH_USERNAME
@@ -86,6 +97,8 @@ class SSHRunner:
         raise last  # type: ignore[misc]
 
     def __enter__(self) -> "SSHRunner":
+        """Open the SSH connection with strict timeouts and no agent fallback."""
+
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
@@ -105,6 +118,8 @@ class SSHRunner:
         return self
 
     def run(self, command: str, timeout: Optional[float] = None) -> CommandResult:
+        """Run one command and return stdout, stderr, exit code, and duration."""
+
         if not self._client:
             raise SSHError("Not connected")
         timeout = timeout or settings.SSH_COMMAND_TIMEOUT
@@ -119,6 +134,8 @@ class SSHRunner:
         return CommandResult(out, err, code, int((time.time() - start) * 1000))
 
     def __exit__(self, *exc) -> None:
+        """Close the SSH connection when the run is done or aborted."""
+
         if self._client:
             self._client.close()
             self._client = None

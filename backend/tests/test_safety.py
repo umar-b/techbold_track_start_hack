@@ -11,9 +11,12 @@ from app.safety import RiskTier, check_command
 
 
 def tier(cmd: str) -> RiskTier:
+    """Return only the tier so parametrized tests stay short."""
+
     return check_command(cmd).tier
 
 
+# Read-only commands may run automatically as diagnostics.
 @pytest.mark.parametrize("cmd", [
     "uname -a",
     "df -h",
@@ -34,9 +37,12 @@ def tier(cmd: str) -> RiskTier:
     "find /var/www -name '*.conf'",
 ])
 def test_safe_reads(cmd):
+    """Common Linux inspection commands should be SAFE."""
+
     assert tier(cmd) is RiskTier.SAFE
 
 
+# State-changing commands need technician approval inside a plan.
 @pytest.mark.parametrize("cmd", [
     "systemctl restart nginx",
     "systemctl enable --now nginx",
@@ -51,9 +57,12 @@ def test_safe_reads(cmd):
     "curl -X POST http://localhost:8080/reload",
 ])
 def test_gated_mutations(cmd):
+    """Useful fix commands should be GATED, not blocked outright."""
+
     assert tier(cmd) is RiskTier.GATED
 
 
+# These commands match the case safety hard-fail examples.
 @pytest.mark.parametrize("cmd", [
     "rm -rf /",
     "rm -rf /etc",
@@ -76,9 +85,12 @@ def test_gated_mutations(cmd):
     ":(){ :|:& };:",
 ])
 def test_blocked_dangerous(cmd):
+    """Dangerous blanket operations must never run."""
+
     assert tier(cmd) is RiskTier.BLOCKED
 
 
+# Secret reads are blocked even when they look like normal read commands.
 @pytest.mark.parametrize("cmd", [
     "cat /etc/shadow",
     "sudo cat /etc/shadow",
@@ -89,19 +101,27 @@ def test_blocked_dangerous(cmd):
     "head -5 /home/azureuser/server.pem",
 ])
 def test_secret_reads_blocked(cmd):
+    """Commands that reference credential paths should be BLOCKED."""
+
     assert tier(cmd) is RiskTier.BLOCKED
 
 
 def test_sudo_prefix_does_not_bypass_block():
+    """Adding sudo should not hide a dangerous command."""
+
     assert check_command("sudo rm -rf /").tier is RiskTier.BLOCKED
 
 
 def test_targeted_chown_on_upload_dir_is_gated_not_blocked():
+    """Targeted ownership fixes are allowed behind the approval gate."""
+
     # The rubric's explicit example: a targeted chown on an upload dir is fine.
     assert check_command("chown -R www-data:www-data /var/www/portal/uploads").tier is RiskTier.GATED
 
 
 def test_compound_readonly_with_quoted_operators_is_safe():
+    """Quoted shell operators should not confuse the safety splitter."""
+
     # A real nano-produced diagnostic: pipes/|| live inside the awk program (quoted),
     # so a quote-aware splitter must keep it read-only, not mis-classify it as GATED.
     cmd = ("sudo ss -tulpn | awk 'NR==1||/:8080/{print}' ; "
@@ -110,14 +130,20 @@ def test_compound_readonly_with_quoted_operators_is_safe():
 
 
 def test_quoted_operator_does_not_hide_a_blocked_command():
+    """A blocked command outside quotes must still be detected."""
+
     # The real rm -rf / is outside quotes and must still be caught.
     assert check_command("echo 'a | b' ; rm -rf /").tier is RiskTier.BLOCKED
 
 
 def test_empty_command_blocked():
+    """Empty commands are not useful and should not run."""
+
     assert check_command("   ").tier is RiskTier.BLOCKED
 
 
 def test_allowed_convenience_flag():
+    """The allowed flag should mean anything except BLOCKED."""
+
     assert check_command("uname -a").allowed is True
     assert check_command("rm -rf /").allowed is False

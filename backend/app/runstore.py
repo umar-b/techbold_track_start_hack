@@ -16,11 +16,17 @@ from .ssh_runner import SSHRunner  # one-way dependency: ssh_runner must not imp
 
 
 def _now_iso() -> str:
+    """Use UTC timestamps for run creation times."""
+
     return datetime.now(timezone.utc).isoformat()
 
 
 class RunStore:
+    """Small in-memory database for active troubleshooting runs."""
+
     def __init__(self) -> None:
+        """Start with no runs and no audit logs."""
+
         self._runs: Dict[str, Dict[str, Any]] = {}
         self._audits: Dict[str, AuditLog] = {}
         # One reused SSH connection per run, owned here (run-control state, ADR-0008)
@@ -35,6 +41,8 @@ class RunStore:
         self._locks_guard = threading.Lock()
 
     def create(self, ticket_id: int) -> Dict[str, Any]:
+        """Create a new run and its matching audit log."""
+
         run_id = uuid.uuid4().hex[:12]
         run = {
             "id": run_id,
@@ -49,12 +57,18 @@ class RunStore:
         return run
 
     def get(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Return a run by id, or None when the id is unknown."""
+
         return self._runs.get(run_id)
 
     def audit(self, run_id: str) -> AuditLog:
+        """Return the audit log for a run that already exists."""
+
         return self._audits[run_id]
 
     def all(self) -> List[Dict[str, Any]]:
+        """Return all runs for debugging or future admin views."""
+
         return list(self._runs.values())
 
     def session(self, run: Dict[str, Any], system: Dict[str, Any]) -> SSHRunner:
@@ -96,4 +110,5 @@ class RunStore:
                 pass
 
 
+# The API imports one shared store so all routes see the same demo state.
 store = RunStore()
