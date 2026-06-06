@@ -7,7 +7,7 @@ the technician's approval on every change — **diagnoses, fixes, validates**, a
 unsupervised.
 
 - **Domain vocabulary:** [`CONTEXT.md`](CONTEXT.md)
-- **Decisions & rationale:** [`docs/adr/`](docs/adr/) (10 ADRs)
+- **Decisions & rationale:** [`docs/adr/`](docs/adr/) (9 ADRs)
 - **Diagrams (components, run loop, state, safety tiers):** [`docs/architecture.md`](docs/architecture.md)
 
 ## How it works
