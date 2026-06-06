@@ -8,12 +8,14 @@ type Props = {
   onStarted: (run: Run) => void;
 };
 
+/** Shows the ticket report and SSH target before the technician starts analysis. */
 export function TicketDetail({ ticketId, onBack, onStarted }: Props) {
   const [data, setData] = useState<{ ticket: Ticket; system: CustomerSystem } | null>(null);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
 
   useEffect(() => {
+    // Load the ticket and system together so the technician sees the full context.
     let active = true;
     api.getTicket(ticketId)
       .then((d) => { if (active) setData(d); })
@@ -21,6 +23,7 @@ export function TicketDetail({ ticketId, onBack, onStarted }: Props) {
     return () => { active = false; };
   }, [ticketId]);
 
+  /** Start the backend run; the backend stops at the first approval gate. */
   async function handleStart() {
     setStarting(true);
     setError("");

@@ -1,13 +1,11 @@
-"""FastAPI backend — technician workspace API + the human-in-the-loop run loop.
+"""FastAPI backend for the technician workspace.
 
-The ERP token and SSH key live only here, never in the browser. The run advances
-synchronously inside the POST handlers (ADR-0008): starting a run or approving a
-plan auto-runs SAFE diagnostics until a gate, executes GATED steps only inside an
-approved plan, and never runs a BLOCKED command. Every action is audited and
-redacted. SSE streams the step list for live progress.
+The browser never receives the ERP token or SSH key. Starting a run performs
+safe read-only diagnostics, then waits for the technician to approve a fix plan.
+Every command is checked, audited, and redacted before it reaches the UI.
 
-Handlers are sync `def` (they do blocking SSH/LLM work, so FastAPI runs them in a
-threadpool) — never block an async route.
+Routes are normal `def` functions because SSH and LLM calls block. FastAPI runs
+them in a threadpool, which keeps the event loop safe.
 """
 from __future__ import annotations
 
@@ -43,6 +41,8 @@ _phoenix: Optional[PhoenixClient] = None
 
 
 def get_phoenix() -> PhoenixClient:
+    """Return the shared Phoenix client, with test overrides supported."""
+
     global _phoenix
     if _phoenix is None:
         _phoenix = PhoenixClient()
@@ -50,6 +50,8 @@ def get_phoenix() -> PhoenixClient:
 
 
 def _erp(fn, *args, **kwargs):
+    """Call Phoenix and turn its errors into API-friendly HTTP errors."""
+
     try:
         return fn(*args, **kwargs)
     except PhoenixError as exc:
@@ -63,6 +65,8 @@ _ssh_cache: Dict[str, SSHRunner] = {}
 
 
 def _ssh_for(run: Dict[str, Any], system: Dict[str, Any]) -> SSHRunner:
+    """Return a reused SSH connection for this run, reconnecting if needed."""
+
     runner = _ssh_cache.get(run["id"])
     if runner is not None and runner._client is not None:
         return runner
@@ -80,6 +84,8 @@ def _ssh_for(run: Dict[str, Any], system: Dict[str, Any]) -> SSHRunner:
 
 
 def _close_ssh(run_id: str) -> None:
+    """Close and forget the cached SSH connection for a run."""
+
     runner = _ssh_cache.pop(run_id, None)
     if runner is not None:
         try:
@@ -89,7 +95,7 @@ def _close_ssh(run_id: str) -> None:
 
 
 def _execute(run: Dict[str, Any], system: Dict[str, Any], command: str, timeout=None):
-    """Run a command on the run's reused SSH connection; reconnect once if it dropped."""
+    """Run a command on the run's SSH connection; reconnect once if it dropped."""
     try:
         return _ssh_for(run, system).run(command, timeout=timeout)
     except SSHError:
@@ -99,6 +105,8 @@ def _execute(run: Dict[str, Any], system: Dict[str, Any], command: str, timeout=
 
 # --- run helpers ----------------------------------------------------------- #
 def _new_step(run, kind, command="", rationale="", risk=None, status="proposed", expected=""):
+    """Append one visible step to the run log."""
+
     step = {"index": len(run["steps"]), "kind": kind, "command": command,
             "rationale": rationale, "risk": risk.value if risk else None,
             "expected": expected, "status": status, "result": None, "safety_reason": ""}
@@ -107,6 +115,8 @@ def _new_step(run, kind, command="", rationale="", risk=None, status="proposed",
 
 
 def _executed_history(run) -> List[Dict[str, Any]]:
+    """Return command results that the agent can use as evidence."""
+
     out = []
     for s in run["steps"]:
         if s["kind"] in ("diagnose", "fix", "validate") and s["status"] in ("executed", "failed"):
@@ -117,7 +127,8 @@ def _executed_history(run) -> List[Dict[str, Any]]:
 
 
 def _run_command(run, system, step, audit) -> bool:
-    """Safety-check then execute a step. Returns True on exit_code 0."""
+    """Safety-check then execute a step, returning True on exit code 0."""
+
     verdict = check_command(step["command"])
     step["risk"] = verdict.tier.value
     if verdict.tier is RiskTier.BLOCKED:
@@ -141,6 +152,8 @@ def _run_command(run, system, step, audit) -> bool:
 
 
 def _set_plan(run, action) -> None:
+    """Store the proposed plan and mark the run as waiting for approval."""
+
     steps = action.get("steps", []) or []
     for st in steps:
         st["risk"] = check_command(st.get("command", "")).tier.value
@@ -150,6 +163,8 @@ def _set_plan(run, action) -> None:
 
 
 def _escalate(run, reason: str) -> None:
+    """Stop automation and hand the ticket back to the technician."""
+
     _new_step(run, "finish", rationale=f"Escalated to technician: {reason}", status="done")
     run["status"] = "escalated"
     store.audit(run["id"]).add("escalated", reason=reason)
@@ -157,9 +172,8 @@ def _escalate(run, reason: str) -> None:
 
 
 def _analyze(run, ticket, system) -> None:
-    """Analysis phase: run read-only diagnostics, then converge to a Plan (forced after a
-    soft limit, escalate at the hard limit). Diagnostics are read-only only; a mutating
-    "diagnostic" is rejected — fixes belong in a Plan the technician approves."""
+    """Run read-only diagnostics until the agent can propose a plan."""
+
     audit = store.audit(run["id"])
     run["status"] = "analyzing"
     while True:
@@ -197,9 +211,8 @@ def _analyze(run, ticket, system) -> None:
 
 
 def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
-    """Apply the WHOLE approved plan once (no mid-execution re-planning), then verify.
-    Verified -> finished (the technician then documents/submits). Not verified -> the agent
-    forms a NEW plan for the technician to approve (the only loop, and it is human-gated)."""
+    """Run the approved plan once, validate it, then finish or ask for a new plan."""
+
     audit = store.audit(run["id"])
     plan = run["plan"] or {}
     steps = edited_steps if edited_steps is not None else plan.get("steps", [])
@@ -228,7 +241,8 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
 
 
 def _replan(run, ticket, system) -> None:
-    """After a failed/rejected plan, the agent forms a NEW plan for the technician to approve."""
+    """Ask the agent for a new plan after rejection or failed validation."""
+
     run["status"] = "analyzing"
     action = agent.propose_action(ticket, system, _executed_history(run), must_plan=True)
     if action.get("action") == "plan":
@@ -241,29 +255,41 @@ def _replan(run, ticket, system) -> None:
 
 # --- app ------------------------------------------------------------------- #
 def create_app() -> FastAPI:
+    """Build the FastAPI app and register all technician workflow routes."""
+
     app = FastAPI(title="AI Service Desk Autopilot — Team Backend", version="1.0.0")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
     @app.get("/health")
     def health():
+        """Simple health check used by Docker, smoke tests, and humans."""
+
         return {"status": "ok"}
 
     @app.get("/api/me")
     def me(phoenix: PhoenixClient = Depends(get_phoenix)):
+        """Proxy the logged-in technician/team identity from Phoenix."""
+
         return _erp(phoenix.me)
 
     @app.get("/api/tickets")
     def tickets(status: Optional[str] = None, priority: Optional[str] = None,
                 sort: str = "date", phoenix: PhoenixClient = Depends(get_phoenix)):
+        """List the team's tickets for the ticket overview screen."""
+
         return _erp(phoenix.list_tickets, status, priority, sort)
 
     @app.get("/api/tickets/{ticket_id}")
     def ticket_detail(ticket_id: int, phoenix: PhoenixClient = Depends(get_phoenix)):
+        """Load ticket text and the customer system needed for SSH."""
+
         return {"ticket": _erp(phoenix.get_ticket, ticket_id),
                 "system": _erp(phoenix.customer_system, ticket_id)}
 
     @app.post("/api/runs")
     def start_run(body: schemas.StartRunIn, phoenix: PhoenixClient = Depends(get_phoenix)):
+        """Start analysis for one ticket and stop at the first approval gate."""
+
         ticket = _erp(phoenix.get_ticket, body.ticket_id)
         system = _erp(phoenix.customer_system, body.ticket_id).get("system", {})
         run = store.create(body.ticket_id)
@@ -275,6 +301,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str):
+        """Return the latest run state for polling or refresh."""
+
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
@@ -283,6 +311,8 @@ def create_app() -> FastAPI:
     @app.post("/api/runs/{run_id}/approve")
     def approve(run_id: str, body: schemas.ApproveIn = Body(default=schemas.ApproveIn()),
                 phoenix: PhoenixClient = Depends(get_phoenix)):
+        """Approve the current plan and run its commands behind safety checks."""
+
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
@@ -296,6 +326,8 @@ def create_app() -> FastAPI:
 
     @app.post("/api/runs/{run_id}/reject")
     def reject(run_id: str, phoenix: PhoenixClient = Depends(get_phoenix)):
+        """Reject the current plan and ask the agent for a different one."""
+
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
@@ -308,6 +340,8 @@ def create_app() -> FastAPI:
 
     @app.post("/api/runs/{run_id}/abort")
     def abort(run_id: str):
+        """Let the technician stop a run before more commands execute."""
+
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
@@ -318,6 +352,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runs/{run_id}/activity-draft")
     def activity_draft(run_id: str, phoenix: PhoenixClient = Depends(get_phoenix)):
+        """Draft the ERP activity from commands that actually ran."""
+
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
@@ -327,6 +363,8 @@ def create_app() -> FastAPI:
     @app.post("/api/runs/{run_id}/submit-activity")
     def submit_activity(run_id: str, body: schemas.SubmitActivityIn,
                         phoenix: PhoenixClient = Depends(get_phoenix)):
+        """Write the reviewed activity back to Phoenix and optionally close the ticket."""
+
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
@@ -351,7 +389,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runs/{run_id}/events")
     def events(run_id: str):
+        """Stream run status and new steps to the UI while work is happening."""
+
         def gen():
+            """Yield server-sent events until the run reaches a terminal state."""
+
             last = 0
             for _ in range(600):
                 run = store.get(run_id)

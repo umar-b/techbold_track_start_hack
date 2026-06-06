@@ -1,26 +1,38 @@
-"""Request schemas for the technician API. Responses are run dicts from the store."""
+"""Request body shapes for the technician API.
+
+Most responses are plain run dictionaries from the in-memory store, so only the
+incoming POST bodies need Pydantic models here.
+"""
 from typing import List, Optional
 
 from pydantic import BaseModel
 
 
 class StartRunIn(BaseModel):
+    """Body used when the technician starts a run for one ticket."""
+
     ticket_id: int
 
 
 class PlanStepIn(BaseModel):
+    """One editable command in an approved fix plan."""
+
     command: str
     rationale: str = ""
     expected: str = ""
 
 
 class ApproveIn(BaseModel):
-    # Optionally edit a single pending command, or replace the plan's steps before running.
+    """Optional edits the technician can send before approving a plan."""
+
+    # Kept for simple command approval experiments; the current UI sends plan steps.
     command: Optional[str] = None
     steps: Optional[List[PlanStepIn]] = None
 
 
 class SubmitActivityIn(BaseModel):
+    """The final activity text that gets written back to Phoenix ERP."""
+
     summary: str = ""
     root_cause: str = ""
     actions_taken: str = ""

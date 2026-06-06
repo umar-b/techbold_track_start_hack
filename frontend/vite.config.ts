@@ -3,5 +3,6 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  // Listen on all interfaces so Docker and the host browser can reach Vite.
   server: { host: "0.0.0.0", port: 5173 },
 });

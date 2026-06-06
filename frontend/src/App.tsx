@@ -11,6 +11,7 @@ type View =
   | { name: "run"; run: Run }
   | { name: "activity"; runId: string };
 
+/** Keeps navigation simple by storing the current screen in local state. */
 export default function App() {
   const [view, setView] = useState<View>({ name: "list" });
 

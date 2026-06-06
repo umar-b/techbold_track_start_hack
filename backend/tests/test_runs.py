@@ -9,34 +9,52 @@ from app.ssh_runner import CommandResult
 
 
 class FakePhoenix:
+    """Tiny Phoenix fake that records status and activity writes."""
+
     def __init__(self):
+        """Start with no writes recorded."""
+
         self.statuses = []
         self.activities = []
 
     def me(self):
+        """Return a fake technician identity."""
+
         return {"firstname": "A", "lastname": "B", "teamname": "T"}
 
     def list_tickets(self, status=None, priority=None, sort="date"):
+        """Return one assigned ticket; filters are not needed for these tests."""
+
         return [self.get_ticket(7001)]
 
     def get_ticket(self, tid):
+        """Return the ticket shape used by the run API."""
+
         return {"id": tid, "title": "Status API down", "description": "health endpoint unreachable",
                 "status": "OPEN", "priority": "high", "customer_name": "Nordlicht"}
 
     def customer_system(self, tid):
+        """Return a fake SSH target for the ticket."""
+
         return {"system": {"ip": "1.2.3.4", "port": 22, "username": "azureuser"}}
 
     def set_status(self, tid, status):
+        """Record ticket status changes instead of calling Phoenix."""
+
         self.statuses.append((tid, status))
         return {"id": tid, "status": status}
 
     def create_activity(self, payload):
+        """Record the activity payload that would be sent to Phoenix."""
+
         self.activities.append(payload)
         return {"id": 1, **payload}
 
 
 @pytest.fixture
 def env(monkeypatch, tmp_path):
+    """Build a hermetic API client with fake ERP, fake SSH, and no LLM."""
+
     monkeypatch.setattr(settings, "AUDIT_DIR", str(tmp_path))
     # Keep tests hermetic: no real LLM/SSH calls even when .env has live creds.
     monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "")
@@ -52,11 +70,15 @@ def env(monkeypatch, tmp_path):
 
 
 def _script(monkeypatch, actions):
+    """Make the agent return a fixed sequence of actions."""
+
     it = iter(actions)
     monkeypatch.setattr(main_mod.agent, "propose_action", lambda *a, **k: next(it))
 
 
 def test_full_run_diagnose_plan_approve_finish(env, monkeypatch):
+    """A normal run should diagnose, wait for approval, verify, and submit activity."""
+
     client, fake = env
     _script(monkeypatch, [
         {"action": "diagnose", "command": "systemctl status nginx", "rationale": "check"},
@@ -89,6 +111,8 @@ def test_full_run_diagnose_plan_approve_finish(env, monkeypatch):
 
 
 def test_blocked_command_in_approved_plan_never_runs(env, monkeypatch):
+    """Even an approved plan must not execute a BLOCKED command."""
+
     client, _ = env
     _script(monkeypatch, [
         {"action": "plan", "root_cause": "x", "steps": [{"command": "rm -rf /"}], "validation": []},
@@ -103,6 +127,8 @@ def test_blocked_command_in_approved_plan_never_runs(env, monkeypatch):
 
 
 def test_abort_from_plan_gate(env, monkeypatch):
+    """The technician can abort while a plan is waiting for approval."""
+
     client, _ = env
     _script(monkeypatch, [
         {"action": "plan", "root_cause": "x", "steps": [{"command": "systemctl restart nginx"}],
@@ -114,11 +140,15 @@ def test_abort_from_plan_gate(env, monkeypatch):
 
 
 def test_get_unknown_run_404(env):
+    """Unknown run ids should return a 404 from the API."""
+
     client, _ = env
     assert client.get("/api/runs/nope").status_code == 404
 
 
 def test_tickets_proxy(env):
+    """Basic health and ticket proxy routes should stay wired."""
+
     client, _ = env
     assert client.get("/api/tickets").status_code == 200
     assert client.get("/health").json() == {"status": "ok"}

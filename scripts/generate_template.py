@@ -1,7 +1,6 @@
-"""
-techbold PowerPoint template generator.
-Produces techbold_template.pptx at the repo root.
-Run: /tmp/pptx-venv/bin/python scripts/generate_template.py
+"""Generate the techbold PowerPoint template deck.
+
+This helper creates pitch-deck slide layouts. It is not part of the runtime app.
 """
 
 from pptx import Presentation
@@ -13,9 +12,7 @@ from pptx.oxml.ns import qn
 from lxml import etree
 import copy
 
-# ---------------------------------------------------------------------------
 # Brand tokens (from DESIGN.md)
-# ---------------------------------------------------------------------------
 NAVY      = RGBColor(0x26, 0x2b, 0x4b)   # #262b4b  structural navy
 NAVY_MID  = RGBColor(0x37, 0x36, 0x52)   # #373652  interactive navy
 GOLD      = RGBColor(0xfc, 0xb5, 0x14)   # #fcb514  techbold gold
@@ -40,11 +37,11 @@ H = Inches(7.5)
 MARGIN = Inches(0.6)
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def rgb_hex(r: RGBColor) -> str:
+    """Convert a PowerPoint RGB color to a hex string."""
+
     return f"{r[0]:02X}{r[1]:02X}{r[2]:02X}"
 
 
@@ -56,14 +53,20 @@ def solid_fill(shape, color: RGBColor):
 
 
 def no_fill(shape):
+    """Remove the shape fill."""
+
     shape.fill.background()
 
 
 def no_line(shape):
+    """Remove the shape outline."""
+
     shape.line.fill.background()
 
 
 def add_rect(slide, left, top, width, height, color: RGBColor):
+    """Add a solid rectangle to a slide."""
+
     shape = slide.shapes.add_shape(
         1,  # MSO_SHAPE_TYPE.RECTANGLE
         left, top, width, height
@@ -74,16 +77,22 @@ def add_rect(slide, left, top, width, height, color: RGBColor):
 
 
 def add_textbox(slide, left, top, width, height):
+    """Add a textbox with the given PowerPoint coordinates."""
+
     return slide.shapes.add_textbox(left, top, width, height)
 
 
 def set_para(para, align=PP_ALIGN.LEFT, space_before=0, space_after=0):
+    """Apply common paragraph spacing and alignment."""
+
     para.alignment = align
     para.space_before = Pt(space_before)
     para.space_after = Pt(space_after)
 
 
 def add_run(para, text, font_name, size_pt, bold=False, color=None, italic=False, caps=False):
+    """Add one styled text run to a paragraph."""
+
     run = para.add_run()
     run.text = text
     run.font.name = font_name
@@ -118,9 +127,7 @@ def navy_stripe(slide, left=Inches(0), width=Inches(0.08)):
     return add_rect(slide, left, 0, width, H, NAVY)
 
 
-# ---------------------------------------------------------------------------
 # Slide builders
-# ---------------------------------------------------------------------------
 
 def build_title_slide(prs):
     """
@@ -555,11 +562,11 @@ def build_closing_slide(prs):
     return slide
 
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
 
 def main():
+    """Build the template deck and save it to the configured output path."""
+
     prs = Presentation()
     prs.slide_width  = W
     prs.slide_height = H

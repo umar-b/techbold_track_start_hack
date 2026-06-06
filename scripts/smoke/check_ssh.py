@@ -17,6 +17,8 @@ from _env import load_env, require, ok, fail
 
 
 def _phoenix_system(ticket_id=None):
+    """Find the SSH target from Phoenix when the user did not pass --host."""
+
     base = require("PHOENIX_API_BASE_URL").rstrip("/")
     token = require("PHOENIX_API_TOKEN")
     hdr = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -36,6 +38,8 @@ def _phoenix_system(ticket_id=None):
 
 
 def main() -> int:
+    """Connect to a VM and run only read-only commands."""
+
     load_env()
     ap = argparse.ArgumentParser()
     ap.add_argument("--host")

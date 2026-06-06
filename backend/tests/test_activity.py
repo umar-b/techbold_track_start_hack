@@ -3,6 +3,8 @@ from app import activity
 
 
 def test_deterministic_draft_without_llm(monkeypatch):
+    """The activity draft still has every required field without an LLM."""
+
     monkeypatch.setattr(activity.llm, "available", lambda: False)
     draft = activity.draft_activity(
         {"title": "Status API down"},
@@ -14,6 +16,8 @@ def test_deterministic_draft_without_llm(monkeypatch):
 
 
 def test_llm_draft_fields_are_redacted(monkeypatch):
+    """LLM-written activity fields are redacted before they leave the backend."""
+
     monkeypatch.setattr(activity.llm, "available", lambda: True)
     monkeypatch.setattr(activity.llm, "complete_json", lambda *a, **k: {
         "summary": "ok", "root_cause": "leaked PASSWORD=hunter2", "actions_taken": "a",

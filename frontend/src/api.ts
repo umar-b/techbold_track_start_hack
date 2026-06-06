@@ -1,11 +1,14 @@
 import type { ActivityDraft, CustomerSystem, Run, Ticket } from "./types";
 
+// The browser only talks to our backend; secrets stay on the backend.
 const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
+/** Convert unknown fetch or runtime errors into text the UI can show. */
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unexpected error";
 }
 
+/** Shared fetch helper so all API errors are handled the same way. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -18,6 +21,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
+/** Small frontend wrapper around the backend technician workflow API. */
 export const api = {
   listTickets: (sort = "date"): Promise<Ticket[]> =>
     request(`/api/tickets?sort=${encodeURIComponent(sort)}`),

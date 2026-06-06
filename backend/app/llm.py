@@ -1,10 +1,8 @@
-"""Azure OpenAI wrapper (ADR-0006).
+"""Small Azure OpenAI wrapper.
 
-This deployment is an Azure AI Foundry project endpoint serving gpt-5.4-nano over
-the OpenAI-compatible **v1** API (`{endpoint}/openai/v1/`, no api-version). Native
-tool-calling does not reliably fire on nano, so we use **strict-JSON mode** as the
-primary path (verified live). One entry point, `complete_json()`, returns a parsed
-JSON object or None on any failure — the LLM must never break the loop.
+The app asks the model for JSON actions instead of giving it direct tools. If
+Azure is missing or fails, this module returns None so the safe fallback path can
+keep the run moving.
 """
 from __future__ import annotations
 
@@ -18,11 +16,15 @@ log = logging.getLogger("llm")
 
 
 def available() -> bool:
+    """Return True only when all Azure settings needed for a call are present."""
+
     return bool(settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_ENDPOINT
                 and settings.AZURE_OPENAI_DEPLOYMENT)
 
 
 def _default_client():
+    """Create the OpenAI-compatible Azure client lazily."""
+
     if not available():
         return None
     from openai import OpenAI  # imported lazily so tests/imports don't require it
@@ -31,7 +33,7 @@ def _default_client():
 
 
 def _loads(text: Optional[str]) -> Optional[Dict[str, Any]]:
-    """Tolerant JSON parse — handles code fences and surrounding prose."""
+    """Parse JSON even if the model adds code fences or a little extra prose."""
     if not text:
         return None
     t = text.strip()
@@ -53,9 +55,9 @@ def complete_json(system: str, user: str, *, tool: Optional[Dict[str, Any]] = No
                   client: Any = None) -> Optional[Dict[str, Any]]:
     """Return a parsed JSON object from the model, or None on failure.
 
-    Uses strict-JSON mode (the prompt must mention JSON). `tool` is accepted for
-    compatibility but unused — native tool-calling is unreliable on this deployment;
-    a `tool_calls` field is still parsed defensively if a model ever returns one.
+    The run loop must never crash because of the LLM. This catches API failures,
+    malformed responses, and optional tool-call output, then lets callers decide
+    whether to use fallback logic.
     """
     client = client or _default_client()
     if client is None:

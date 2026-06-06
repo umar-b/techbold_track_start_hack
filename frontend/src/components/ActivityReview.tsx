@@ -4,6 +4,7 @@ import { api, getErrorMessage } from "../api";
 
 type Props = { runId: string; onDone: () => void };
 
+// These are the exact ERP activity fields the technician reviews.
 const FIELDS: { key: keyof ActivityDraft; label: string; rows: number }[] = [
   { key: "summary", label: "Summary", rows: 2 },
   { key: "root_cause", label: "Root cause (technical, not symptom)", rows: 2 },
@@ -12,6 +13,7 @@ const FIELDS: { key: keyof ActivityDraft; label: string; rows: number }[] = [
   { key: "validation_result", label: "Validation result", rows: 2 },
 ];
 
+/** Lets the technician review and submit the generated ERP activity. */
 export function ActivityReview({ runId, onDone }: Props) {
   const [draft, setDraft] = useState<ActivityDraft | null>(null);
   const [error, setError] = useState("");
@@ -19,6 +21,7 @@ export function ActivityReview({ runId, onDone }: Props) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    // The backend redacts secrets before sending the draft, but the user can edit it.
     let active = true;
     api.activityDraft(runId)
       .then((d) => { if (active) setDraft(d); })
@@ -26,6 +29,7 @@ export function ActivityReview({ runId, onDone }: Props) {
     return () => { active = false; };
   }, [runId]);
 
+  /** Submit the reviewed text and mark the ticket done in Phoenix. */
   async function handleSubmit() {
     if (!draft) return;
     setSubmitting(true);

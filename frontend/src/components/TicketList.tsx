@@ -4,12 +4,14 @@ import { api, getErrorMessage } from "../api";
 
 type Props = { onOpen: (ticketId: number) => void };
 
+/** Shows assigned tickets and lets the technician choose which one to inspect. */
 export function TicketList({ onOpen }: Props) {
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
   const [error, setError] = useState("");
   const [sort, setSort] = useState("date");
 
   useEffect(() => {
+    // Ignore late responses when the sort changes or the component unmounts.
     let active = true;
     setTickets(null);
     setError("");

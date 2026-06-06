@@ -1,4 +1,4 @@
-"""Command safety layer (ADR-0002, ADR-0004).
+"""Command safety layer.
 
 Classifies every proposed shell command into a risk tier BEFORE it can run:
 
@@ -6,11 +6,9 @@ Classifies every proposed shell command into a risk tier BEFORE it can run:
   GATED   - state-changing; runs only inside a technician-approved Plan.
   BLOCKED - dangerous or secret-exposing; never runs, cannot be approved.
 
-The model proposes, this layer disposes. Classification ignores a leading
-`sudo`/`env` prefix so privilege escalation cannot smuggle a command past the
-checks. Only *blanket* operations on system roots are BLOCKED — a targeted op on
-a narrow application path (e.g. `chown -R app /var/www/app/uploads`) is GATED, so
-the technician can still approve it.
+The model can suggest commands, but this file decides what is allowed. It strips
+simple prefixes like `sudo` before checking, so privilege cannot hide a risky
+command.
 """
 from __future__ import annotations
 
@@ -20,6 +18,8 @@ from enum import Enum
 
 
 class RiskTier(str, Enum):
+    """Risk levels shown to the technician and enforced by the backend."""
+
     SAFE = "SAFE"
     GATED = "GATED"
     BLOCKED = "BLOCKED"
@@ -27,11 +27,15 @@ class RiskTier(str, Enum):
 
 @dataclass(frozen=True)
 class SafetyVerdict:
+    """The safety decision for one proposed command."""
+
     tier: RiskTier
     reason: str = ""
 
     @property
     def allowed(self) -> bool:
+        """Convenience flag for code that only needs blocked vs not blocked."""
+
         return self.tier is not RiskTier.BLOCKED
 
 
@@ -47,7 +51,7 @@ _BLANKET = (
 )
 _RECURSIVE = r"(?:-\w*[rR]\w*|--recursive)"
 
-# Checked against the whole (normalised) command.
+# Checked against the whole normalized command because these are always unsafe.
 _BLOCK_WHOLE = [
     (r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:", "Fork bomb"),
     (r"\bmkfs(?:\.\w+)?\b", "Filesystem format"),
@@ -60,7 +64,7 @@ _BLOCK_WHOLE = [
     (r"\bhistory\s+-c\b", "Clearing shell history (hiding actions)"),
 ]
 
-# Checked per shell segment (target-scoped; must not span operators).
+# Checked per shell segment so one target does not accidentally affect another.
 _BLOCK_SEG = [
     (rf"\brm\b.*{_RECURSIVE}.*{_BLANKET}", "Recursive delete of a system path"),
     (rf"\bchmod\b(?=.*{_RECURSIVE})(?=.*\b0?777\b).*{_BLANKET}", "Blanket chmod 777 on a system path"),
@@ -74,6 +78,7 @@ _SECRET_PATH = re.compile(
     re.IGNORECASE,
 )
 
+# Commands in this set can be SAFE, but some subcommands below are still writes.
 _SAFE_BINS = {
     "cat", "ls", "head", "tail", "grep", "egrep", "fgrep", "zgrep", "less", "more",
     "wc", "cut", "sort", "uniq", "tr", "stat", "file", "readlink", "realpath",
@@ -85,6 +90,7 @@ _SAFE_BINS = {
     "systemctl", "service", "apt", "apt-get", "dpkg", "pip", "pip3",
 }
 
+# Prefixes do not change the real command, so strip them before classifying.
 _PREFIX = {"sudo", "env", "time", "nice", "nohup", "ionice"}
 
 
@@ -127,6 +133,8 @@ def _split_segments(cmd: str) -> list:
 
 
 def _strip_prefix(seg: str) -> str:
+    """Remove harmless command prefixes before checking the real command."""
+
     toks = seg.split()
     i = 0
     while i < len(toks):
@@ -141,6 +149,8 @@ def _strip_prefix(seg: str) -> str:
 
 
 def _segment_safe(seg: str) -> bool:
+    """Return True when one shell segment looks read-only."""
+
     s = _strip_prefix(seg).strip()
     if not s:
         return True
@@ -179,7 +189,8 @@ def _segment_safe(seg: str) -> bool:
 
 
 def check_command(command: str) -> SafetyVerdict:
-    """Classify a proposed shell command into a SAFE / GATED / BLOCKED verdict."""
+    """Classify a proposed shell command before it can run."""
+
     cmd = " ".join((command or "").split())
     if not cmd:
         return SafetyVerdict(RiskTier.BLOCKED, "Empty command")

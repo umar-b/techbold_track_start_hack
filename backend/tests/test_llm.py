@@ -5,6 +5,8 @@ from app import llm
 
 
 def _resp(content=None, tool_args=None):
+    """Build the tiny response shape that complete_json reads from OpenAI."""
+
     msg = types.SimpleNamespace(content=content, tool_calls=None)
     if tool_args is not None:
         fn = types.SimpleNamespace(arguments=tool_args)
@@ -13,36 +15,50 @@ def _resp(content=None, tool_args=None):
 
 
 def _client(fn):
+    """Build a fake client with the same nested chat.completions.create path."""
+
     return types.SimpleNamespace(
         chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=fn)))
 
 
 def test_returns_parsed_tool_call_arguments():
+    """If a model sends tool-call JSON, parse those arguments."""
+
     client = _client(lambda **kw: _resp(tool_args='{"action":"diagnose","command":"uname -a"}'))
     out = llm.complete_json("sys", "usr", tool={"name": "x", "parameters": {}}, client=client)
     assert out["action"] == "diagnose" and out["command"] == "uname -a"
 
 
 def test_falls_back_to_json_content_when_no_tool_calls():
+    """Normal JSON message content is the default path for this app."""
+
     client = _client(lambda **kw: _resp(content='{"action":"finish","summary":"ok"}'))
     out = llm.complete_json("sys", "usr", tool={"name": "x", "parameters": {}}, client=client)
     assert out["action"] == "finish"
 
 
 def test_tolerates_code_fenced_json():
+    """The parser should handle models that wrap JSON in markdown fences."""
+
     client = _client(lambda **kw: _resp(content='```json\n{"action":"plan"}\n```'))
     out = llm.complete_json("sys", "usr", client=client)
     assert out["action"] == "plan"
 
 
 def test_returns_none_when_client_raises():
+    """LLM API failures should return None instead of crashing the run."""
+
     def boom(**kw):
+        """Fake an API client failure."""
+
         raise RuntimeError("api down")
     out = llm.complete_json("sys", "usr", tool={"name": "x", "parameters": {}}, client=_client(boom))
     assert out is None
 
 
 def test_returns_none_without_credentials(monkeypatch):
+    """Missing Azure credentials should use fallback logic, not the network."""
+
     # No client passed and no Azure creds -> None, never an exception or a network call.
     from app.config import settings
     monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "")

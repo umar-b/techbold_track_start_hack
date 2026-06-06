@@ -1,9 +1,7 @@
-"""Client for the Phoenix ERP mock API (ADR-0008).
+"""Client for the Phoenix ERP mock API.
 
-All ERP access is encapsulated here — routes and the agent never call the ERP
-directly. Includes per-request timeouts and a small bounded retry for transient
-5xx / network errors; client errors (401/404/422) are surfaced immediately as a
-typed PhoenixError and never retried.
+All ERP calls go through this file so auth, timeouts, retries, and error
+messages stay in one place.
 """
 from __future__ import annotations
 
@@ -19,13 +17,17 @@ log = logging.getLogger("phoenix")
 
 
 class PhoenixError(RuntimeError):
-    """Any non-2xx ERP response or network failure."""
+    """Any ERP response or network error the API should show as a backend failure."""
 
 
 class PhoenixClient:
+    """Small typed wrapper around the Phoenix REST API."""
+
     def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None,
                  retries: Optional[int] = None, backoff: float = 0.5,
                  timeout: Optional[float] = None, transport: Optional[httpx.BaseTransport] = None):
+        """Create a client; tests can inject a mock httpx transport."""
+
         self.base_url = (base_url or settings.PHOENIX_API_BASE_URL).rstrip("/")
         self.token = token if token is not None else settings.PHOENIX_API_TOKEN
         self.retries = settings.HTTP_RETRIES if retries is None else retries
@@ -34,9 +36,13 @@ class PhoenixClient:
                                     transport=transport)
 
     def _headers(self) -> Dict[str, str]:
+        """Send the team token on every ERP request."""
+
         return {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
+        """Run one ERP request with retries only for transient failures."""
+
         url = f"{self.base_url}{path}"
         last: Optional[Exception] = None
         for attempt in range(self.retries + 1):
@@ -67,10 +73,14 @@ class PhoenixClient:
 
     # ---- read ----
     def me(self) -> Dict[str, Any]:
+        """Return the current technician/team identity."""
+
         return self._request("GET", "/api/v1/me")
 
     def list_tickets(self, status: Optional[str] = None, priority: Optional[str] = None,
                      sort: str = "date") -> List[Dict[str, Any]]:
+        """Return tickets assigned to this team, optionally filtered and sorted."""
+
         params: Dict[str, str] = {"sort": sort}
         if status:
             params["status"] = status
@@ -79,20 +89,32 @@ class PhoenixClient:
         return self._request("GET", "/api/v1/me/tickets", params=params)
 
     def get_ticket(self, ticket_id: int) -> Dict[str, Any]:
+        """Load one ticket by id."""
+
         return self._request("GET", f"/api/v1/tickets/{ticket_id}")
 
     def customer_system(self, ticket_id: int) -> Dict[str, Any]:
+        """Load the SSH target and OS notes for a ticket."""
+
         return self._request("GET", f"/api/v1/tickets/{ticket_id}/customer-system")
 
     def get_customer(self, customer_id: int) -> Dict[str, Any]:
+        """Load customer details when a future UI needs them."""
+
         return self._request("GET", f"/api/v1/customers/{customer_id}")
 
     # ---- write ----
     def set_status(self, ticket_id: int, status: str) -> Dict[str, Any]:
+        """Move a ticket through OPEN, PENDING, or DONE in Phoenix."""
+
         return self._request("PATCH", f"/api/v1/tickets/{ticket_id}/status", json={"status": status})
 
     def create_activity(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create the final technician activity for a solved ticket."""
+
         return self._request("POST", "/api/v1/activities/create", json=payload)
 
     def close(self) -> None:
+        """Close the underlying HTTP client when tests or tools are finished."""
+
         self._client.close()

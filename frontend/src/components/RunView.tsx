@@ -11,6 +11,7 @@ type Props = {
 
 const TERMINAL = ["finished", "aborted", "escalated"];
 
+/** Shows live run progress and the technician approval controls. */
 export function RunView({ initialRun, onExit, onActivity }: Props) {
   const [run, setRun] = useState<Run>(initialRun);
   const [busy, setBusy] = useState(false);
@@ -19,6 +20,7 @@ export function RunView({ initialRun, onExit, onActivity }: Props) {
 
   useEffect(() => () => { mounted.current = false; }, []);
 
+  /** Run an approve/reject/abort action and poll while the backend is busy. */
   // Poll only while an action is in flight, so a long execute streams progress
   // without idle polling at gates (the run advances synchronously server-side).
   async function act(fn: () => Promise<Run>) {
@@ -38,6 +40,7 @@ export function RunView({ initialRun, onExit, onActivity }: Props) {
     }
   }
 
+  // Terminal runs no longer need the abort button.
   const isTerminal = TERMINAL.includes(run.status);
 
   return (
@@ -87,7 +90,9 @@ export function RunView({ initialRun, onExit, onActivity }: Props) {
               <p className="muted">Validation: {run.plan.validation.join("; ")}</p>
             )}
             <div className="actions">
+              {/* Approval is the gate that lets GATED commands run on the VM. */}
               <button type="button" className="btn btn-primary" disabled={busy} onClick={() => act(() => api.approve(run.id))}>Approve &amp; run</button>
+              {/* Rejecting keeps control with the technician and asks for a new plan. */}
               <button type="button" className="btn" disabled={busy} onClick={() => act(() => api.reject(run.id))}>Reject — replan</button>
             </div>
           </div>
@@ -104,6 +109,7 @@ export function RunView({ initialRun, onExit, onActivity }: Props) {
           </div>
         )}
 
+        {/* After validation, the final step is reviewing the ERP activity text. */}
         {run.status === "finished" && (
           <button type="button" className="btn btn-primary" onClick={() => onActivity(run.id, run.ticket_id)}>
             Review &amp; submit activity →
@@ -111,6 +117,7 @@ export function RunView({ initialRun, onExit, onActivity }: Props) {
         )}
 
         <div className="side-foot">
+          {/* Abort lets the technician stop before the backend runs more commands. */}
           {!isTerminal && (
             <button type="button" className="btn btn-danger" disabled={busy} onClick={() => act(() => api.abort(run.id))}>Abort run</button>
           )}

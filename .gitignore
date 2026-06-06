@@ -1,4 +1,4 @@
-# Secrets & keys — NEVER commit these
+# Secrets and private keys. Never commit these.
 .env
 keys/*
 !keys/.gitkeep

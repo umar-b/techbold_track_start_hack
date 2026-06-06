@@ -1,16 +1,14 @@
-"""Single planning agent (ADR-0003, ADR-0007).
+"""Single planning agent for one ticket.
 
-Proposes the next action given the ticket, the customer system, and the history
-of executed commands. One of:
+The agent looks at the ticket, customer system, and commands already run. It
+returns exactly one next action:
 
   diagnose - ONE read-only command to gather evidence (auto-runs as SAFE)
   plan     - a root cause + ordered fix steps for the technician to approve
   finish   - validated; nothing more to do
 
-The agent reasons over live evidence using the guidebook method (no hard-coded
-recipes) and emits a JSON action (ADR-0006: JSON mode, not native tools). Without
-an LLM it falls back to a safe read-only baseline so the loop always runs. Memory
-may pre-fill the plan as hypotheses-to-verify (ADR-0009), never actions-to-apply.
+Without an LLM it falls back to a few safe read-only diagnostics, so the demo
+does not break just because Azure is not configured.
 """
 from __future__ import annotations
 
@@ -51,7 +49,7 @@ Respond ONLY with a single JSON object. Include just the keys for the chosen act
 - finish: {"action":"finish","summary":"<one line of what was restored>"}
 """
 
-# Read-only baseline so the workflow runs without an LLM (ADR-0004 graceful degradation).
+# Read-only baseline so the workflow still runs without an LLM.
 _BASELINE: List[Dict[str, str]] = [
     {"command": "systemctl --failed --no-pager", "rationale": "List failed services first."},
     {"command": "journalctl -p err -n 80 --no-pager", "rationale": "Recent error-level logs."},
@@ -61,6 +59,8 @@ _BASELINE: List[Dict[str, str]] = [
 
 
 def load_guidebook() -> str:
+    """Load the troubleshooting guidebook text used in the prompt."""
+
     try:
         return _GUIDEBOOK_PATH.read_text(encoding="utf-8")
     except OSError:
@@ -68,6 +68,8 @@ def load_guidebook() -> str:
 
 
 def _history_text(history: List[Dict[str, Any]]) -> str:
+    """Compress recent command results so the model sees useful evidence."""
+
     if not history:
         return "(nothing run yet)"
     lines = []
@@ -79,6 +81,8 @@ def _history_text(history: List[Dict[str, Any]]) -> str:
 
 
 def _baseline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Return the next safe fallback action when the LLM is unavailable."""
+
     i = len(history)
     if i < len(_BASELINE):
         step = _BASELINE[i]
@@ -88,7 +92,7 @@ def _baseline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _unwrap(out: Any) -> Any:
-    """nano sometimes nests the action object (e.g. {"diagnose": {...}}); unwrap it."""
+    """Handle model responses that wrap the real action one level too deep."""
     if not isinstance(out, dict):
         return out
     if out.get("action") in _ACTIONS:
@@ -105,6 +109,8 @@ def _unwrap(out: Any) -> Any:
 def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
                    must_plan: bool = False, client: Any = None) -> Dict[str, Any]:
+    """Ask the model for the next action, or use the safe fallback."""
+
     related = ("RELATED PAST INCIDENTS (verify against live evidence, do not assume):\n" + memory) if memory else ""
     closing = (
         "You now have enough evidence. Respond with action=plan — an ordered list of fix steps "

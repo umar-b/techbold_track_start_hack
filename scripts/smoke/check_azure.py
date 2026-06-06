@@ -17,6 +17,8 @@ from _env import load_env, require, ok, fail
 
 
 def _post(endpoint: str, key: str, body: dict):
+    """Send one raw chat/completions request to the Azure v1 endpoint."""
+
     url = f"{endpoint.rstrip('/')}/openai/v1/chat/completions"
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
@@ -30,6 +32,8 @@ def _post(endpoint: str, key: str, body: dict):
 
 
 def main() -> int:
+    """Check chat, JSON mode, and whether native tool-calling fires."""
+
     load_env()
     endpoint = require("AZURE_OPENAI_ENDPOINT")
     key = require("AZURE_OPENAI_API_KEY")
