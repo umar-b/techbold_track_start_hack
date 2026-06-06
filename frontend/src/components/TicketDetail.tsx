@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Server } from "lucide-react";
-import type { CustomerSystem, Run, Ticket } from "../types";
+import type { CustomerSystem, Ticket } from "../types";
 import { api, getErrorMessage } from "../api";
 
 type Props = {
   ticketId: number;
   onBack: () => void;
-  onStarted: (run: Run) => void;
   onStartChat: (ticket: Ticket, system: CustomerSystem) => void;
 };
 

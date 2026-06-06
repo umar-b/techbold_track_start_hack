@@ -1,24 +1,21 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import type { ActivityDraft, CustomerSystem, Run, Ticket } from "./types";
+import type { CustomerSystem, Ticket } from "./types";
 import { TicketList } from "./components/TicketList";
 import { TicketDetail } from "./components/TicketDetail";
-import { RunView } from "./components/RunView";
 import { ActivityReview } from "./components/ActivityReview";
 import { AgentChatView } from "./components/AgentChatView";
 
-type ViewName = "list" | "detail" | "run" | "chat" | "activity";
+type ViewName = "list" | "detail" | "chat" | "activity";
 type View =
   | { name: "list" }
   | { name: "detail"; ticketId: number }
-  | { name: "run"; run: Run }
   | { name: "chat"; ticket: Ticket; system: CustomerSystem }
-  | { name: "activity"; runId?: string; prefillDraft?: ActivityDraft };
+  | { name: "activity"; runId?: string };
 
 const DEPTH: Record<ViewName, number> = {
   list: 0,
   detail: 1,
-  run: 2,
   chat: 2,
   activity: 3,
 };
@@ -76,7 +73,7 @@ export default function App() {
               ticket={view.ticket}
               system={view.system}
               onExit={() => navigate({ name: "list" })}
-              onActivity={(prefill) => navigate({ name: "activity", prefillDraft: prefill })}
+              onActivity={(runId) => navigate({ name: "activity", runId })}
             />
           ) : (
             <main className="app-main">
@@ -89,21 +86,12 @@ export default function App() {
                 <TicketDetail
                   ticketId={view.ticketId}
                   onBack={() => navigate({ name: "list" })}
-                  onStarted={(run) => navigate({ name: "run", run })}
                   onStartChat={(ticket, system) => navigate({ name: "chat", ticket, system })}
-                />
-              )}
-              {view.name === "run" && (
-                <RunView
-                  initialRun={view.run}
-                  onExit={() => navigate({ name: "list" })}
-                  onActivity={(runId) => navigate({ name: "activity", runId })}
                 />
               )}
               {view.name === "activity" && (
                 <ActivityReview
                   runId={view.runId}
-                  prefillDraft={view.prefillDraft}
                   onDone={() => navigate({ name: "list" })}
                 />
               )}

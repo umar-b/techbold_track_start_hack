@@ -1,6 +1,6 @@
 import type { ActivityDraft, CustomerSystem, Run, Ticket } from "./types";
 
-const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
+export const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unexpected error";
@@ -110,30 +110,19 @@ const mockApi = {
 
 // ---------------------------------------------------------------------------
 // Decide which API to use
+//
+// MOCK_MODE is an EXPLICIT opt-in (VITE_MOCK_MODE=true) for offline UI work. We
+// do NOT silently fall back to mocks on a failed request — a real backend error
+// must surface, not masquerade as a working demo.
 // ---------------------------------------------------------------------------
 
 const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === "true";
 
-async function withMockFallback<T>(mockFn: () => Promise<T>, apiFn: () => Promise<T>): Promise<T> {
-  if (MOCK_MODE) return mockFn();
-  try {
-    return await apiFn();
-  } catch {
-    return mockFn();
-  }
-}
-
 export const api = {
   listTickets: (sort = "date"): Promise<Ticket[]> =>
-    withMockFallback(
-      () => mockApi.listTickets(),
-      () => request(`/api/tickets?sort=${encodeURIComponent(sort)}`),
-    ),
+    MOCK_MODE ? mockApi.listTickets() : request(`/api/tickets?sort=${encodeURIComponent(sort)}`),
   getTicket: (id: number): Promise<{ ticket: Ticket; system: CustomerSystem }> =>
-    withMockFallback(
-      () => mockApi.getTicket(id),
-      () => request(`/api/tickets/${id}`),
-    ),
+    MOCK_MODE ? mockApi.getTicket(id) : request(`/api/tickets/${id}`),
   startRun: (ticketId: number): Promise<Run> =>
     request(`/api/runs`, { method: "POST", body: JSON.stringify({ ticket_id: ticketId }) }),
   getRun: (id: string): Promise<Run> => request(`/api/runs/${id}`),
