@@ -32,14 +32,18 @@ def available() -> bool:
     return False
 
 
-def _default_model() -> Any:
-    """Build a LangChain chat model from config, or None when unavailable.
+def _fast_model_name() -> str:
+    """The cheap/default model — used for diagnosis and summaries."""
+    return settings.LLM_MODEL or settings.AZURE_OPENAI_DEPLOYMENT
 
-    Provider packages are imported lazily inside each branch so an optional
-    provider's package being absent never breaks the default (azure) path.
+
+def _build_model(model_name: str) -> Any:
+    """Build a LangChain chat model for a specific model name (ADR-0011).
+
+    Provider is taken from config; packages are imported lazily inside each
+    branch so an optional provider's package being absent never breaks the
+    default (azure) path. All providers run in JSON mode.
     """
-    if not available():
-        return None
     provider = settings.LLM_PROVIDER
     if provider == "azure-openai":
         from langchain_openai import ChatOpenAI  # lazy: keeps imports cheap
@@ -47,20 +51,35 @@ def _default_model() -> Any:
         model = ChatOpenAI(
             base_url=base_url,
             api_key=settings.AZURE_OPENAI_API_KEY,
-            model=(settings.LLM_MODEL or settings.AZURE_OPENAI_DEPLOYMENT),
+            model=model_name,
             temperature=0,
         )
         return model.bind(response_format={"type": "json_object"})
     if provider == "ollama":
         from langchain_ollama import ChatOllama  # lazy: optional package
         return ChatOllama(
-            model=settings.LLM_MODEL,
+            model=model_name,
             base_url=settings.OLLAMA_BASE_URL,
             format="json",
             temperature=0,
         )
     log.warning("unknown LLM_PROVIDER %r — no model built", provider)
     return None
+
+
+def _default_model() -> Any:
+    """The fast model, or None when unavailable."""
+    return _build_model(_fast_model_name()) if available() else None
+
+
+def _reasoning_model() -> Any:
+    """The stronger model for planning (ADR-0011); falls back to the fast model.
+
+    Routed to sparingly (only the convergence/plan step) to limit token spend.
+    """
+    if not available():
+        return None
+    return _build_model(settings.LLM_REASONING_MODEL or _fast_model_name())
 
 
 def _loads(text: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -88,16 +107,19 @@ def _loads(text: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
 
 
-def complete_json(system: str, user: str, *,
-                  model: Any = None) -> Optional[Dict[str, Any]]:
+def complete_json(system: str, user: str, *, model: Any = None,
+                  reasoning: bool = False) -> Optional[Dict[str, Any]]:
     """Return a parsed JSON object from the model, or None on failure.
 
     Uses JSON mode (the prompt must mention JSON). `model` is an injectable
     LangChain chat model — anything with `.invoke(messages) -> obj` whose
-    `obj.content` is a string. When omitted, the default is built from config.
+    `obj.content` is a string. When omitted, the model is built from config:
+    the stronger reasoning model when `reasoning=True` (ADR-0011), else the
+    fast model.
     """
     try:
-        model = model or _default_model()
+        if model is None:
+            model = _reasoning_model() if reasoning else _default_model()
         if model is None:
             return None
         msg = model.invoke([("system", system), ("human", user)])

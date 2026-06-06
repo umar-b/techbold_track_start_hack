@@ -119,7 +119,9 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
         f"SYSTEM: {system}\n\n{related}\n\n"
         f"HISTORY:\n{_history_text(history)}\n\n{closing}"
     )
-    out = _unwrap(llm.complete_json(_SYSTEM, user, model=model))
+    # Route the convergence/plan step to the stronger reasoning model (ADR-0011);
+    # free-running diagnosis stays on the cheap fast model.
+    out = _unwrap(llm.complete_json(_SYSTEM, user, model=model, reasoning=must_plan))
     if isinstance(out, dict) and out.get("action") in _ACTIONS:
         return out
     return _baseline(history)

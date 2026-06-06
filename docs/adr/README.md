@@ -17,3 +17,4 @@ See [`template.md`](template.md) for new entries. Domain vocabulary lives in
 | [0008](0008-sse-rest-in-memory-state.md) | SSE for events, REST for actions, in-memory run state | accepted | 2026-06-06 |
 | [0009](0009-memory-seeds-hypotheses-not-actions.md) | Memory seeds plans as hypotheses-to-verify, never actions | accepted | 2026-06-06 |
 | [0010](0010-langchain-agent-framework-model-agnostic.md) | Adopt LangChain as the agent framework (model-agnostic), replacing the custom loop | accepted | 2026-06-06 |
+| [0011](0011-two-tier-model-routing.md) | Two-tier model routing — fast model for diagnosis, reasoning model for planning | accepted | 2026-06-06 |

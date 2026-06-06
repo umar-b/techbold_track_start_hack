@@ -40,8 +40,18 @@ class Settings(BaseSettings):
 
     # LLM (ADR-0010) — model-agnostic provider selection via LangChain.
     LLM_PROVIDER: str = "azure-openai"
-    LLM_MODEL: str = ""  # empty -> falls back to AZURE_OPENAI_DEPLOYMENT for azure
+    LLM_MODEL: str = ""  # fast model; empty -> falls back to AZURE_OPENAI_DEPLOYMENT for azure
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+
+    # Two-tier routing (ADR-0011): stronger model for the plan/replan step only.
+    # Empty -> reuse the fast model everywhere (no routing).
+    LLM_REASONING_MODEL: str = ""
+
+    # Embeddings (text-embedding-3-large) are available on the same Azure resource
+    # but intentionally unwired — memory is a markdown graph (ADR-0001). These exist
+    # so semantic recall is a config+small-client change away, not wired into any path.
+    AZURE_EMBEDDING_DEPLOYMENT: str = ""
+    AZURE_EMBEDDING_API_VERSION: str = "2024-06-01"
 
     # Timeouts & guardrails
     HTTP_TIMEOUT_SECONDS: float = 15.0
