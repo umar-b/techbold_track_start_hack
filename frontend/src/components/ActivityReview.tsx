@@ -3,7 +3,7 @@ import { CircleCheck, Loader2 } from "lucide-react";
 import type { ActivityDraft } from "../types";
 import { api, getErrorMessage } from "../api";
 
-type Props = { runId: string; onDone: () => void };
+type Props = { runId?: string; prefillDraft?: ActivityDraft; onDone: () => void };
 
 const FIELDS: { key: keyof ActivityDraft; label: string; rows: number; hint?: string }[] = [
   { key: "summary", label: "Summary", rows: 2, hint: "One sentence: what was restored." },
@@ -13,26 +13,29 @@ const FIELDS: { key: keyof ActivityDraft; label: string; rows: number; hint?: st
   { key: "validation_result", label: "Validation result", rows: 2, hint: "Concrete proof the customer benefit is restored." },
 ];
 
-export function ActivityReview({ runId, onDone }: Props) {
-  const [draft, setDraft] = useState<ActivityDraft | null>(null);
+export function ActivityReview({ runId, prefillDraft, onDone }: Props) {
+  const [draft, setDraft] = useState<ActivityDraft | null>(prefillDraft ?? null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    if (prefillDraft || !runId) return;
     let active = true;
     api.activityDraft(runId)
       .then((d) => { if (active) setDraft(d); })
       .catch((e) => { if (active) setError(getErrorMessage(e)); });
     return () => { active = false; };
-  }, [runId]);
+  }, [runId, prefillDraft]);
 
   async function handleSubmit() {
     if (!draft) return;
     setSubmitting(true);
     setError("");
     try {
-      await api.submitActivity(runId, { ...draft, set_done: true });
+      if (runId) {
+        await api.submitActivity(runId, { ...draft, set_done: true });
+      }
       setDone(true);
     } catch (e) {
       setError(getErrorMessage(e));

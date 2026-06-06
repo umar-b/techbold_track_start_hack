@@ -7,12 +7,12 @@ type Props = {
   ticketId: number;
   onBack: () => void;
   onStarted: (run: Run) => void;
+  onStartChat: (ticket: Ticket, system: CustomerSystem) => void;
 };
 
-export function TicketDetail({ ticketId, onBack, onStarted }: Props) {
+export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
   const [data, setData] = useState<{ ticket: Ticket; system: CustomerSystem } | null>(null);
   const [error, setError] = useState("");
-  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -22,15 +22,9 @@ export function TicketDetail({ ticketId, onBack, onStarted }: Props) {
     return () => { active = false; };
   }, [ticketId]);
 
-  async function handleStart() {
-    setStarting(true);
-    setError("");
-    try {
-      onStarted(await api.startRun(ticketId));
-    } catch (e) {
-      setError(getErrorMessage(e));
-      setStarting(false);
-    }
+  function handleStart() {
+    if (!data) return;
+    onStartChat(data.ticket, data.system);
   }
 
   if (error && !data) {
@@ -105,14 +99,9 @@ export function TicketDetail({ ticketId, onBack, onStarted }: Props) {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={starting}
             onClick={handleStart}
           >
-            {starting ? (
-              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "center" }}>
-                <Loader2 size={13} className="spin" /> Connecting…
-              </span>
-            ) : "Connect & diagnose"}
+            Connect &amp; diagnose
           </button>
 
           <p className="hint">

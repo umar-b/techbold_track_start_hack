@@ -1,22 +1,25 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import type { Run } from "./types";
+import type { ActivityDraft, CustomerSystem, Run, Ticket } from "./types";
 import { TicketList } from "./components/TicketList";
 import { TicketDetail } from "./components/TicketDetail";
 import { RunView } from "./components/RunView";
 import { ActivityReview } from "./components/ActivityReview";
+import { AgentChatView } from "./components/AgentChatView";
 
-type ViewName = "list" | "detail" | "run" | "activity";
+type ViewName = "list" | "detail" | "run" | "chat" | "activity";
 type View =
   | { name: "list" }
   | { name: "detail"; ticketId: number }
   | { name: "run"; run: Run }
-  | { name: "activity"; runId: string };
+  | { name: "chat"; ticket: Ticket; system: CustomerSystem }
+  | { name: "activity"; runId?: string; prefillDraft?: ActivityDraft };
 
 const DEPTH: Record<ViewName, number> = {
   list: 0,
   detail: 1,
   run: 2,
+  chat: 2,
   activity: 3,
 };
 
@@ -47,9 +50,10 @@ export default function App() {
   }
 
   const dir = DEPTH[view.name] - prevDepth;
+  const isChat = view.name === "chat";
 
   return (
-    <div>
+    <div style={{ overflowX: "hidden" }}>
       <header className="app-header">
         <div className="brand">
           <span className="brand-name">techbold</span>
@@ -58,44 +62,55 @@ export default function App() {
         </div>
       </header>
 
-      <main className="app-main">
-        <AnimatePresence mode="wait" custom={dir}>
-          <motion.div
-            key={view.name}
-            custom={dir}
-            variants={variants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-          >
-            {view.name === "list" && (
-              <TicketList
-                onOpen={(ticketId) => navigate({ name: "detail", ticketId })}
-              />
-            )}
-            {view.name === "detail" && (
-              <TicketDetail
-                ticketId={view.ticketId}
-                onBack={() => navigate({ name: "list" })}
-                onStarted={(run) => navigate({ name: "run", run })}
-              />
-            )}
-            {view.name === "run" && (
-              <RunView
-                initialRun={view.run}
-                onExit={() => navigate({ name: "list" })}
-                onActivity={(runId) => navigate({ name: "activity", runId })}
-              />
-            )}
-            {view.name === "activity" && (
-              <ActivityReview
-                runId={view.runId}
-                onDone={() => navigate({ name: "list" })}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+      <AnimatePresence mode="wait" custom={dir}>
+        <motion.div
+          key={view.name}
+          custom={dir}
+          variants={variants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+        >
+          {isChat && view.name === "chat" ? (
+            <AgentChatView
+              ticket={view.ticket}
+              system={view.system}
+              onExit={() => navigate({ name: "list" })}
+              onActivity={(prefill) => navigate({ name: "activity", prefillDraft: prefill })}
+            />
+          ) : (
+            <main className="app-main">
+              {view.name === "list" && (
+                <TicketList
+                  onOpen={(ticketId) => navigate({ name: "detail", ticketId })}
+                />
+              )}
+              {view.name === "detail" && (
+                <TicketDetail
+                  ticketId={view.ticketId}
+                  onBack={() => navigate({ name: "list" })}
+                  onStarted={(run) => navigate({ name: "run", run })}
+                  onStartChat={(ticket, system) => navigate({ name: "chat", ticket, system })}
+                />
+              )}
+              {view.name === "run" && (
+                <RunView
+                  initialRun={view.run}
+                  onExit={() => navigate({ name: "list" })}
+                  onActivity={(runId) => navigate({ name: "activity", runId })}
+                />
+              )}
+              {view.name === "activity" && (
+                <ActivityReview
+                  runId={view.runId}
+                  prefillDraft={view.prefillDraft}
+                  onDone={() => navigate({ name: "list" })}
+                />
+              )}
+            </main>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
