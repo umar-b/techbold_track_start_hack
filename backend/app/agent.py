@@ -8,7 +8,7 @@ of executed commands. One of:
   finish   - validated; nothing more to do
 
 The agent reasons over live evidence using the guidebook method (no hard-coded
-recipes) and emits a JSON action (ADR-0006: JSON mode, not native tools). Without
+recipes) and emits a JSON action (ADR-0010: JSON mode, not native tools). Without
 an LLM it falls back to a safe read-only baseline so the loop always runs. Memory
 may pre-fill the plan as hypotheses-to-verify (ADR-0009), never actions-to-apply.
 """
@@ -84,7 +84,7 @@ def _baseline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         step = _BASELINE[i]
         return {"action": "diagnose", "command": step["command"], "rationale": step["rationale"]}
     return {"action": "finish",
-            "summary": "Baseline diagnostics complete (configure Azure OpenAI for full reasoning)."}
+            "summary": "Baseline diagnostics complete (configure an LLM provider for full reasoning)."}
 
 
 def _unwrap(out: Any) -> Any:
@@ -104,7 +104,7 @@ def _unwrap(out: Any) -> Any:
 
 def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
-                   must_plan: bool = False, client: Any = None) -> Dict[str, Any]:
+                   must_plan: bool = False, model: Any = None) -> Dict[str, Any]:
     related = ("RELATED PAST INCIDENTS (verify against live evidence, do not assume):\n" + memory) if memory else ""
     closing = (
         "You now have enough evidence. Respond with action=plan — an ordered list of fix steps "
@@ -119,7 +119,7 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
         f"SYSTEM: {system}\n\n{related}\n\n"
         f"HISTORY:\n{_history_text(history)}\n\n{closing}"
     )
-    out = _unwrap(llm.complete_json(_SYSTEM, user, client=client))
+    out = _unwrap(llm.complete_json(_SYSTEM, user, model=model))
     if isinstance(out, dict) and out.get("action") in _ACTIONS:
         return out
     return _baseline(history)

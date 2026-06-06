@@ -1,16 +1,21 @@
-"""Azure OpenAI wrapper (ADR-0006).
+"""Model-agnostic chat-model layer over LangChain (ADR-0010).
 
-This deployment is an Azure AI Foundry project endpoint serving gpt-5.4-nano over
-the OpenAI-compatible **v1** API (`{endpoint}/openai/v1/`, no api-version). Native
-tool-calling does not reliably fire on nano, so we use **strict-JSON mode** as the
-primary path (verified live). One entry point, `complete_json()`, returns a parsed
-JSON object or None on any failure — the LLM must never break the loop.
+Supersedes the hand-rolled OpenAI-SDK wrapper (ADR-0006): the model is now a
+LangChain `BaseChatModel` selected by config (`LLM_PROVIDER`, `LLM_MODEL`), so
+swapping Azure OpenAI for Ollama (or another provider) needs no code change. The
+default is the Azure AI Foundry **v1** endpoint (`{endpoint}/openai/v1/`, no
+api-version) via `ChatOpenAI(base_url=…)` — not `AzureChatOpenAI`, which forces
+an api-version.
+
+Native tool-calling does not reliably fire on nano (verified live), so **JSON
+mode** remains the primary path. One entry point, `complete_json()`, returns a
+parsed JSON object or None on any failure — the LLM must never break the loop.
 """
 from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .config import settings
 
@@ -18,25 +23,59 @@ log = logging.getLogger("llm")
 
 
 def available() -> bool:
-    return bool(settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_ENDPOINT
-                and settings.AZURE_OPENAI_DEPLOYMENT)
+    provider = settings.LLM_PROVIDER
+    if provider == "azure-openai":
+        return bool(settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_ENDPOINT
+                    and (settings.LLM_MODEL or settings.AZURE_OPENAI_DEPLOYMENT))
+    if provider == "ollama":
+        return bool(settings.LLM_MODEL)
+    return False
 
 
-def _default_client():
+def _default_model() -> Any:
+    """Build a LangChain chat model from config, or None when unavailable.
+
+    Provider packages are imported lazily inside each branch so an optional
+    provider's package being absent never breaks the default (azure) path.
+    """
     if not available():
         return None
-    from openai import OpenAI  # imported lazily so tests/imports don't require it
-    base_url = settings.AZURE_OPENAI_ENDPOINT.rstrip("/") + "/openai/v1/"
-    return OpenAI(base_url=base_url, api_key=settings.AZURE_OPENAI_API_KEY)
+    provider = settings.LLM_PROVIDER
+    if provider == "azure-openai":
+        from langchain_openai import ChatOpenAI  # lazy: keeps imports cheap
+        base_url = settings.AZURE_OPENAI_ENDPOINT.rstrip("/") + "/openai/v1/"
+        model = ChatOpenAI(
+            base_url=base_url,
+            api_key=settings.AZURE_OPENAI_API_KEY,
+            model=(settings.LLM_MODEL or settings.AZURE_OPENAI_DEPLOYMENT),
+            temperature=0,
+        )
+        return model.bind(response_format={"type": "json_object"})
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama  # lazy: optional package
+        return ChatOllama(
+            model=settings.LLM_MODEL,
+            base_url=settings.OLLAMA_BASE_URL,
+            format="json",
+            temperature=0,
+        )
+    log.warning("unknown LLM_PROVIDER %r — no model built", provider)
+    return None
 
 
 def _loads(text: Optional[str]) -> Optional[Dict[str, Any]]:
-    """Tolerant JSON parse — handles code fences and surrounding prose."""
-    if not text:
+    """Tolerant JSON parse — handles code fences and surrounding prose.
+
+    `content` may be a non-string (LangChain types it `str | list`); anything
+    that is not a usable string yields None rather than raising.
+    """
+    if not isinstance(text, str) or not text:
         return None
     t = text.strip()
     if t.startswith("```"):
-        t = t.strip("`")
+        lines = t.splitlines()
+        body = lines[1:-1] if len(lines) > 1 and lines[-1].strip().startswith("```") else lines[1:]
+        t = "\n".join(body).strip()
     try:
         return json.loads(t)
     except Exception:  # noqa: BLE001
@@ -49,34 +88,23 @@ def _loads(text: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
 
 
-def complete_json(system: str, user: str, *, tool: Optional[Dict[str, Any]] = None,
-                  client: Any = None) -> Optional[Dict[str, Any]]:
+def complete_json(system: str, user: str, *,
+                  model: Any = None) -> Optional[Dict[str, Any]]:
     """Return a parsed JSON object from the model, or None on failure.
 
-    Uses strict-JSON mode (the prompt must mention JSON). `tool` is accepted for
-    compatibility but unused — native tool-calling is unreliable on this deployment;
-    a `tool_calls` field is still parsed defensively if a model ever returns one.
+    Uses JSON mode (the prompt must mention JSON). `model` is an injectable
+    LangChain chat model — anything with `.invoke(messages) -> obj` whose
+    `obj.content` is a string. When omitted, the default is built from config.
     """
-    client = client or _default_client()
-    if client is None:
-        return None
-    messages: List[Dict[str, str]] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
     try:
-        resp = client.chat.completions.create(
-            model=settings.AZURE_OPENAI_DEPLOYMENT, messages=messages,
-            response_format={"type": "json_object"},
-        )
-    except Exception:  # noqa: BLE001
-        log.exception("LLM completion failed")
-        return None
-    try:
-        msg = resp.choices[0].message
-        calls = getattr(msg, "tool_calls", None)
-        if calls:
-            return _loads(calls[0].function.arguments)
+        model = model or _default_model()
+        if model is None:
+            return None
+        msg = model.invoke([("system", system), ("human", user)])
         return _loads(getattr(msg, "content", None))
     except Exception:  # noqa: BLE001
+        # Covers a missing optional provider package (ImportError from a lazy
+        # import), transport errors, and malformed responses — the LLM must
+        # never break the agent loop.
+        log.exception("LLM completion failed")
         return None

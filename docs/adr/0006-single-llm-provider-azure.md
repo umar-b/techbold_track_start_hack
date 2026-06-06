@@ -1,7 +1,7 @@
 # ADR-0006: Single LLM provider (Azure OpenAI), no provider abstraction
 
 **Date**: 2026-06-06
-**Status**: accepted
+**Status**: superseded by ADR-0010
 **Deciders**: Team (umar-b + teammates)
 
 ## Context

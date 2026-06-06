@@ -32,11 +32,16 @@ class Settings(BaseSettings):
     SSH_USERNAME: str = "azureuser"
     SSH_KEY_PASSPHRASE: Optional[str] = None
 
-    # Azure OpenAI (ADR-0006)
+    # Azure OpenAI credentials (used by the azure-openai provider — ADR-0010, was ADR-0006)
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_API_KEY: str = ""
     AZURE_OPENAI_DEPLOYMENT: str = ""
-    AZURE_OPENAI_API_VERSION: str = "2024-10-21"
+    AZURE_OPENAI_API_VERSION: str = "2024-10-21"  # unused on the v1 Foundry path; kept for reference
+
+    # LLM (ADR-0010) — model-agnostic provider selection via LangChain.
+    LLM_PROVIDER: str = "azure-openai"
+    LLM_MODEL: str = ""  # empty -> falls back to AZURE_OPENAI_DEPLOYMENT for azure
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
 
     # Timeouts & guardrails
     HTTP_TIMEOUT_SECONDS: float = 15.0

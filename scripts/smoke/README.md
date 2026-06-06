@@ -10,7 +10,7 @@ pip install paramiko        # only needed for the SSH check
 
 python scripts/smoke/check_phoenix.py   # ERP token + list tickets
 python scripts/smoke/check_ssh.py       # SSH into the first ticket's VM, run uname/id/sudo
-python scripts/smoke/check_azure.py     # chat + TOOL-CALLING + JSON mode on gpt-5.4-nano
+python scripts/smoke/check_llm.py       # LLM seam (LangChain, provider-agnostic): JSON completion
 ```
 
 What each tells you:
@@ -18,8 +18,9 @@ What each tells you:
 - **check_phoenix** — token valid, tickets load. A 401 means a bad `PHOENIX_API_TOKEN`.
 - **check_ssh** — key loads, VM reachable, and whether `azureuser` has passwordless sudo
   (needed for fixes and `sudo /opt/hackathon/public-test.sh`).
-- **check_azure** — the make-or-break: does `gpt-5.4-nano` support **native tool-calling**?
-  If yes, build on native tools; if no, build on the strict-JSON fallback (ADR-0006).
-  If a request errors on a parameter, the script prints the error body — that's the value to fix.
+- **check_llm** — goes through the backend `app.llm` seam (LangChain, model-agnostic;
+  ADR-0010), so it tests whatever `LLM_PROVIDER` is set (azure-openai default, or ollama).
+  Confirms `llm.available()` and that `complete_json()` returns a parsed JSON dict (JSON mode
+  is the agent path). Degrades with a clear message when creds/config or deps are missing.
 
 Delete this directory once the real backend wraps these integrations.
