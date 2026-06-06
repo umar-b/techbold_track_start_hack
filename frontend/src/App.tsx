@@ -1,17 +1,50 @@
-// Skeleton — build the technician workspace here.
-//
-// Suggested flow: list tickets -> open a ticket (show the customer system) ->
-// run the agent with visible progress and a human approve/reject on each action
-// -> review and submit the activity. How it looks and how it talks to your
-// backend is entirely up to you. The backend is at import.meta.env.VITE_API_BASE
-// (default http://localhost:8000).
+import { useState } from "react";
+import type { Run } from "./types";
+import { TicketList } from "./components/TicketList";
+import { TicketDetail } from "./components/TicketDetail";
+import { RunView } from "./components/RunView";
+import { ActivityReview } from "./components/ActivityReview";
+
+type View =
+  | { name: "list" }
+  | { name: "detail"; ticketId: number }
+  | { name: "run"; run: Run }
+  | { name: "activity"; runId: string };
 
 export default function App() {
+  const [view, setView] = useState<View>({ name: "list" });
+
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", maxWidth: 680, margin: "12vh auto", padding: 24 }}>
-      <h1>AI Service Desk Autopilot</h1>
-      <p>React + Vite + TypeScript skeleton. Replace this with your technician workspace.</p>
-      <p style={{ color: "#666" }}>See <code>README.md</code> and <code>docs/phoenix-openapi.yaml</code> to get started.</p>
-    </main>
+    <div className="app">
+      <header className="app-header">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          Service Desk <strong>Autopilot</strong>
+        </div>
+        <span className="brand-sub">techbold · technician console</span>
+      </header>
+      <main className="app-main">
+        {view.name === "list" && (
+          <TicketList onOpen={(ticketId) => setView({ name: "detail", ticketId })} />
+        )}
+        {view.name === "detail" && (
+          <TicketDetail
+            ticketId={view.ticketId}
+            onBack={() => setView({ name: "list" })}
+            onStarted={(run) => setView({ name: "run", run })}
+          />
+        )}
+        {view.name === "run" && (
+          <RunView
+            initialRun={view.run}
+            onExit={() => setView({ name: "list" })}
+            onActivity={(runId) => setView({ name: "activity", runId })}
+          />
+        )}
+        {view.name === "activity" && (
+          <ActivityReview runId={view.runId} onDone={() => setView({ name: "list" })} />
+        )}
+      </main>
+    </div>
   );
 }
