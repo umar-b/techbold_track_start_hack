@@ -43,7 +43,8 @@ class Settings(BaseSettings):
     LLM_MODEL: str = ""  # fast model; empty -> falls back to AZURE_OPENAI_DEPLOYMENT for azure
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
-    # Two-tier routing (ADR-0011): stronger model for the plan/replan step only.
+    # Two-tier routing (ADR-0011): stronger model for all in-loop reasoning
+    # (diagnosis + planning); the fast model drafts the activity log.
     # Empty -> reuse the fast model everywhere (no routing).
     LLM_REASONING_MODEL: str = ""
 

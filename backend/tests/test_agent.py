@@ -44,5 +44,18 @@ def test_unwraps_action_keyed_wrapper_without_inner_action(monkeypatch):
     assert out["action"] == "plan" and out["root_cause"] == "x"
 
 
+def test_propose_action_routes_to_reasoning_model(monkeypatch):
+    # All in-loop reasoning (diagnose + plan) goes to the reasoning model (ADR-0011).
+    captured = {}
+
+    def fake(system, user, *, model=None, reasoning=False):
+        captured["reasoning"] = reasoning
+        return {"action": "diagnose", "command": "uname -a"}
+
+    monkeypatch.setattr(agent.llm, "complete_json", fake)
+    agent.propose_action(TICKET, SYS, history=[])
+    assert captured["reasoning"] is True
+
+
 def test_guidebook_loads():
     assert "Persistence" in agent.load_guidebook()

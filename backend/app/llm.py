@@ -73,9 +73,10 @@ def _default_model() -> Any:
 
 
 def _reasoning_model() -> Any:
-    """The stronger model for planning (ADR-0011); falls back to the fast model.
+    """The stronger model for in-loop reasoning (ADR-0011); falls back to the fast model.
 
-    Routed to sparingly (only the convergence/plan step) to limit token spend.
+    Used for every diagnose/plan decision; the fast model is reserved for the
+    non-reasoning activity-log draft.
     """
     if not available():
         return None
