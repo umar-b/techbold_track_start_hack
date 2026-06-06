@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert } from "lucide-react";
-import type { CustomerSystem, Step, Ticket } from "../types";
+import type { CustomerSystem, PlanStep, PlanStepEdit, Step, Ticket } from "../types";
 import { useRun } from "../hooks/useRun";
 import { RiskBadge } from "./RiskBadge";
 
@@ -220,12 +220,33 @@ function PlanApproval({
   rootCause, steps, validation, busy, onApprove, onReject,
 }: {
   rootCause: string;
-  steps: { command: string; rationale?: string; expected?: string; risk?: string }[];
+  steps: PlanStep[];
   validation: string[];
   busy: boolean;
-  onApprove: () => void;
+  onApprove: (editedSteps?: PlanStepEdit[]) => void;
   onReject: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [cmds, setCmds] = useState<string[]>(() => steps.map((s) => s.command));
+  // Reset edits only when the plan CONTENT changes (a genuine replan) — keyed on
+  // content, not array identity, so an SSE reconnect replaying the same plan does
+  // not silently discard in-progress edits.
+  const planKey = `${rootCause} ${steps.map((s) => s.command).join(" ")}`;
+  useEffect(() => {
+    setCmds(steps.map((s) => s.command));
+    setEditing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planKey]);
+
+  const command = (i: number) => cmds[i] ?? steps[i]?.command ?? "";
+  const dirty = steps.some((s, i) => command(i) !== s.command);
+  const hasEmpty = editing && steps.some((_, i) => !command(i).trim());
+
+  function handleApprove() {
+    if (!dirty) return onApprove();
+    onApprove(steps.map((s, i) => ({ command: command(i), rationale: s.rationale ?? "", expected: s.expected ?? "" })));
+  }
+
   return (
     <div className="chat-msg-agent chat-msg-cmd-wrap">
       <div className="chat-avatar chat-avatar--sm">
@@ -234,17 +255,51 @@ function PlanApproval({
       <div className="cmd-block cmd-block--pending" style={{ width: "100%" }}>
         <div className="cmd-block-header">
           <span className="badge badge-gated" style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            <ShieldAlert size={10} />FIX PLAN
+            <ShieldAlert size={10} />FIX PLAN{dirty ? " · edited" : ""}
           </span>
+          <button
+            type="button"
+            className="link"
+            style={{ marginLeft: "auto", fontSize: "0.75rem" }}
+            disabled={busy}
+            aria-expanded={editing}
+            aria-controls="plan-steps"
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? "Done editing" : "Edit"}
+          </button>
         </div>
         <p className="cmd-block-rationale" style={{ marginTop: 0 }}>
           <strong style={{ color: "var(--navy, #1e293b)" }}>Root cause:</strong> {rootCause}
         </p>
-        <ol style={{ margin: "0.6rem 0 0", paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+        <ol id="plan-steps" style={{ margin: "0.6rem 0 0", paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
           {steps.map((st, i) => (
-            <li key={`${i}-${st.command}`} style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-              <RiskBadge risk={st.risk ?? null} />
-              <code className="cmd-block-code">{st.command}</code>
+            <li key={i} style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+              {command(i) !== st.command ? (
+                <span className="badge badge-none">edited · risk re-checked on run</span>
+              ) : (
+                <RiskBadge risk={st.risk ?? null} />
+              )}
+              {editing ? (
+                <textarea
+                  className="plan-edit"
+                  value={command(i)}
+                  rows={2}
+                  spellCheck={false}
+                  aria-label={`Edit command ${i + 1}`}
+                  onChange={(e) => setCmds((prev) => {
+                    const next = steps.map((s, j) => prev[j] ?? s.command);
+                    next[i] = e.target.value;
+                    return next;
+                  })}
+                  style={{
+                    fontFamily: "var(--mono)", fontSize: "0.8125rem", width: "100%", resize: "vertical",
+                    padding: "0.4rem 0.5rem", borderRadius: "4px", border: "1px solid var(--warn, #d97706)",
+                  }}
+                />
+              ) : (
+                <code className="cmd-block-code">{command(i)}</code>
+              )}
               {st.expected && <span className="expected">Expected: {st.expected}</span>}
             </li>
           ))}
@@ -252,11 +307,19 @@ function PlanApproval({
         {validation.length > 0 && (
           <p className="cmd-block-rationale">Validation: {validation.join("; ")}</p>
         )}
+        {dirty && (
+          <p className="cmd-block-rationale" style={{ color: "var(--warn, #d97706)" }}>
+            Edited commands are still safety-checked before they run.
+          </p>
+        )}
         <div className="cmd-block-actions">
-          <button type="button" className="btn btn-gold cmd-approve-btn" aria-label="Approve the proposed fix plan" disabled={busy} onClick={onApprove}>
-            {busy ? "Running…" : "Approve plan"}
+          <button type="button" className="btn btn-gold cmd-approve-btn"
+                  aria-label={dirty ? "Approve the edited fix plan" : "Approve the proposed fix plan"}
+                  disabled={busy || hasEmpty} onClick={handleApprove}>
+            {busy ? "Running…" : dirty ? "Approve edited plan" : "Approve plan"}
           </button>
-          <button type="button" className="btn btn-danger" aria-label="Reject the plan and replan" disabled={busy} onClick={onReject}>
+          <button type="button" className="btn btn-danger"
+                  aria-label="Reject the plan and replan" disabled={busy} onClick={onReject}>
             Reject — replan
           </button>
         </div>

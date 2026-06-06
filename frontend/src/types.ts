@@ -70,6 +70,14 @@ export interface PlanStep {
   risk?: string;
 }
 
+// What the technician sends when approving (optionally edited) — matches the
+// backend ApproveIn.steps / PlanStepIn shape.
+export interface PlanStepEdit {
+  command: string;
+  rationale?: string;
+  expected?: string;
+}
+
 export interface Plan {
   root_cause: string;
   steps: PlanStep[];

@@ -171,6 +171,23 @@ def test_unreachable_host_escalates_instead_of_looping(env, monkeypatch):
     assert len([s for s in run["steps"] if s["kind"] == "diagnose"]) >= main_mod.DIAGNOSE_HARD_LIMIT
 
 
+def test_approve_with_edited_steps_runs_the_edited_command(env, monkeypatch):
+    client, _ = env
+    ran = []
+    monkeypatch.setattr(main_mod, "_execute",
+                        lambda run, system, command, timeout=None: (ran.append(command), CommandResult("ok", "", 0, 5))[1])
+    _script(monkeypatch, [
+        {"action": "plan", "root_cause": "x",
+         "steps": [{"command": "systemctl restart nginx"}], "validation": []},
+    ])
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+    run = client.post(f"/api/runs/{rid}/approve",
+                      json={"steps": [{"command": "systemctl restart apache2", "rationale": "edited"}]}).json()
+    fix = [s for s in run["steps"] if s["kind"] == "fix"]
+    assert fix and fix[0]["command"] == "systemctl restart apache2"  # the EDITED command ran
+    assert "systemctl restart apache2" in ran and "systemctl restart nginx" not in ran
+
+
 def test_finish_with_no_successful_evidence_escalates(env, monkeypatch):
     client, _ = env
     actions = iter([

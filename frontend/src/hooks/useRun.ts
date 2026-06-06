@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Run, Step } from "../types";
+import type { PlanStepEdit, Run, Step } from "../types";
 import { api, getErrorMessage, BASE } from "../api";
 
 const TERMINAL = ["finished", "aborted", "escalated"];
@@ -114,8 +114,8 @@ export function useRun(ticketId: number) {
     }
   }, []);
 
-  const approve = useCallback(() => {
-    if (run) void action(() => api.approve(run.id));
+  const approve = useCallback((editedSteps?: PlanStepEdit[]) => {
+    if (run) void action(() => api.approve(run.id, editedSteps));
   }, [run, action]);
 
   const reject = useCallback(() => {

@@ -1,4 +1,4 @@
-import type { ActivityDraft, CustomerSystem, Run, Ticket } from "./types";
+import type { ActivityDraft, CustomerSystem, PlanStepEdit, Run, Ticket } from "./types";
 
 export const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
@@ -126,8 +126,11 @@ export const api = {
   startRun: (ticketId: number): Promise<Run> =>
     request(`/api/runs`, { method: "POST", body: JSON.stringify({ ticket_id: ticketId }) }),
   getRun: (id: string): Promise<Run> => request(`/api/runs/${id}`),
-  approve: (id: string): Promise<Run> =>
-    request(`/api/runs/${id}/approve`, { method: "POST", body: "{}" }),
+  approve: (id: string, steps?: PlanStepEdit[]): Promise<Run> =>
+    request(`/api/runs/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify(steps && steps.length ? { steps } : {}),
+    }),
   reject: (id: string): Promise<Run> =>
     request(`/api/runs/${id}/reject`, { method: "POST", body: "{}" }),
   abort: (id: string): Promise<Run> =>
