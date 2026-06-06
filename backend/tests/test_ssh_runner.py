@@ -1,4 +1,6 @@
 """Spec for SSH key resolution (single-key vs per-VM caseN convention). No network."""
+import pytest
+
 from app import ssh_runner
 from app.config import settings
 
@@ -19,3 +21,11 @@ def test_per_vm_case_key_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "SSH_KEY_DIR", str(tmp_path))
     (tmp_path / "case2_key.pem").write_text("x")
     assert ssh_runner.resolve_key_path(7002).endswith("case2_key.pem")
+
+
+def test_load_key_missing_path_gives_actionable_error():
+    """A missing/empty key path raises a clear, actionable SSHError, not a cryptic stack trace."""
+    with pytest.raises(ssh_runner.SSHError) as ei:
+        ssh_runner._load_key("", None)
+    msg = str(ei.value)
+    assert "SSH_PRIVATE_KEY_PATH" in msg and "caseN_key.pem" in msg

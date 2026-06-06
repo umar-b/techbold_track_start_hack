@@ -226,6 +226,28 @@ def test_repeated_gated_diagnostic_does_not_loop(env, monkeypatch):
     assert max(seen_rejected) >= 1
 
 
+def test_ssh_transport_failure_escalates_without_looping(env, monkeypatch):
+    client, _ = env
+    # SSH cannot connect (e.g. a missing key). Every diagnostic would fail identically, so the
+    # run must escalate on the FIRST transport error (exit_code None) — not loop to the limit.
+    from app.ssh_runner import SSHError
+
+    def boom(run, system, command, timeout=None):
+        raise SSHError("SSH key not found (looked for ''). Set SSH_PRIVATE_KEY_PATH ...")
+
+    monkeypatch.setattr(main_mod, "_execute", boom)
+    monkeypatch.setattr(main_mod.agent, "propose_action",
+                        lambda *a, **k: {"action": "diagnose", "command": "systemctl status x",
+                                         "rationale": "probe"})
+    run = client.post("/api/runs", json={"ticket_id": 7001}).json()
+
+    assert run["status"] == "escalated"
+    diagnoses = [s for s in run["steps"] if s["kind"] == "diagnose"]
+    assert len(diagnoses) == 1  # escalated on the first transport error — no loop
+    assert (diagnoses[0]["result"] or {}).get("exit_code") is None
+    assert "SSH key" in (diagnoses[0]["result"] or {}).get("stderr", "")
+
+
 def test_tickets_proxy(env):
     client, _ = env
     assert client.get("/api/tickets").status_code == 200

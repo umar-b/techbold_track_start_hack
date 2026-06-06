@@ -235,6 +235,14 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
         step = _new_step(run, "diagnose", cmd, action.get("rationale", ""), risk=verdict.tier)
         if verdict.tier is RiskTier.SAFE:
             _run_command(run, system, step, audit)
+            # An SSH transport failure (could not connect / load the key) is recorded as a
+            # "failed" step with exit_code None — distinct from a command that ran and exited
+            # non-zero. The connection won't heal on its own, so every further diagnostic would
+            # fail identically: escalate now with the cause instead of looping to the hard limit.
+            res = step.get("result") or {}
+            if step["status"] == "failed" and res.get("exit_code") is None:
+                _escalate(run, f"cannot reach the customer VM — {res.get('stderr') or 'SSH error'}")
+                return
             continue
         step["status"] = "rejected"
         step["safety_reason"] = verdict.reason

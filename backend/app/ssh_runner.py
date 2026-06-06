@@ -48,15 +48,22 @@ def resolve_key_path(ticket_id: Optional[int] = None) -> str:
 
 
 def _load_key(path: str, passphrase: Optional[str]):
-    """Try the common SSH key formats used by the hackathon VMs."""
+    """Load the SSH private key, giving an actionable error when it is missing."""
 
+    expanded = os.path.expanduser(path or "")
+    if not expanded or not os.path.isfile(expanded):
+        raise SSHError(
+            f"SSH key not found (looked for {path!r}). Set SSH_PRIVATE_KEY_PATH to your .pem "
+            f"in .env, or place the per-VM key at {settings.SSH_KEY_DIR}/caseN_key.pem "
+            "(N = ticket id − 7000)."
+        )
     last: Optional[Exception] = None
     for loader in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
         try:
-            return loader.from_private_key_file(path, password=passphrase or None)
+            return loader.from_private_key_file(expanded, password=passphrase or None)
         except Exception as exc:  # noqa: BLE001 - try the next key type
             last = exc
-    raise SSHError(f"Could not load SSH key at {path}: {last}")
+    raise SSHError(f"Could not load SSH key at {expanded}: {last}")
 
 
 class SSHRunner:
