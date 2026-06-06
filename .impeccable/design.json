@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-06T00:00:00Z",
+  "title": "Design System: techbold AI Service Desk",
+  "extensions": {
+    "colorMeta": {
+      "navy": {
+        "role": "primary",
+        "displayName": "Techbold Navy",
+        "canonical": "oklch(21% 0.07 268)",
+        "tonalRamp": [
+          "oklch(10% 0.04 268)",
+          "oklch(15% 0.05 268)",
+          "oklch(21% 0.07 268)",
+          "oklch(30% 0.08 268)",
+          "oklch(42% 0.08 268)",
+          "oklch(57% 0.07 268)",
+          "oklch(72% 0.05 268)",
+          "oklch(88% 0.02 268)"
+        ]
+      },
+      "navy-mid": {
+        "role": "primary",
+        "displayName": "Navy Interactive",
+        "canonical": "oklch(27% 0.07 272)",
+        "tonalRamp": [
+          "oklch(12% 0.04 272)",
+          "oklch(18% 0.06 272)",
+          "oklch(27% 0.07 272)",
+          "oklch(36% 0.08 272)",
+          "oklch(48% 0.08 272)",
+          "oklch(62% 0.07 272)",
+          "oklch(76% 0.05 272)",
+          "oklch(90% 0.02 272)"
+        ]
+      },
+      "gold": {
+        "role": "secondary",
+        "displayName": "Techbold Gold",
+        "canonical": "oklch(79% 0.18 72)",
+        "tonalRamp": [
+          "oklch(20% 0.07 72)",
+          "oklch(32% 0.10 72)",
+          "oklch(44% 0.14 72)",
+          "oklch(57% 0.17 72)",
+          "oklch(68% 0.18 72)",
+          "oklch(79% 0.18 72)",
+          "oklch(88% 0.14 72)",
+          "oklch(95% 0.07 72)"
+        ]
+      },
+      "gold-light": {
+        "role": "secondary",
+        "displayName": "Gold Light",
+        "canonical": "oklch(85% 0.17 84)",
+        "tonalRamp": [
+          "oklch(22% 0.06 84)",
+          "oklch(35% 0.10 84)",
+          "oklch(50% 0.14 84)",
+          "oklch(63% 0.16 84)",
+          "oklch(74% 0.17 84)",
+          "oklch(85% 0.17 84)",
+          "oklch(91% 0.12 84)",
+          "oklch(96% 0.06 84)"
+        ]
+      },
+      "warm-surface": {
+        "role": "neutral",
+        "displayName": "Warm Surface",
+        "canonical": "oklch(96% 0.01 97)",
+        "tonalRamp": [
+          "oklch(30% 0.01 97)",
+          "oklch(45% 0.01 97)",
+          "oklch(60% 0.01 97)",
+          "oklch(72% 0.01 97)",
+          "oklch(82% 0.01 97)",
+          "oklch(90% 0.01 97)",
+          "oklch(96% 0.01 97)",
+          "oklch(99% 0.005 97)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Gray",
+        "canonical": "oklch(55% 0 0)",
+        "tonalRamp": [
+          "oklch(20% 0 0)",
+          "oklch(30% 0 0)",
+          "oklch(40% 0 0)",
+          "oklch(50% 0 0)",
+          "oklch(60% 0 0)",
+          "oklch(70% 0 0)",
+          "oklch(82% 0 0)",
+          "oklch(92% 0 0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page-level titles and section anchors only. Barlow Condensed 900 is the web-safe stand-in for ProximaNova Condensed Black used on techbold.at."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Card titles, ticket subject lines, panel headers."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Ticket descriptions, AI reasoning, activity log prose. Inter approximates Denim WD from techbold.at."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase labels: nav items, button text, status badges, field labels. Mirrors techbold's live site uppercase CTA convention exactly."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "All shell commands, SSH output, log entries, command proposals. Never on warm surfaces using dark terminal background — use warm-surface (#f3f2ea) background."
+      }
+    },
+    "shadows": [
+      {
+        "name": "lift",
+        "value": "0 2px 8px rgba(38, 43, 75, 0.12)",
+        "purpose": "Hover state on interactive cards. Confirms clickability."
+      },
+      {
+        "name": "float",
+        "value": "0 8px 32px rgba(38, 43, 75, 0.18)",
+        "purpose": "Dropdowns, popovers, command confirmation dialogs."
+      },
+      {
+        "name": "modal",
+        "value": "0 24px 64px rgba(38, 43, 75, 0.24)",
+        "purpose": "Full modal overlays. Derived from navy, not generic black."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Default easing for state transitions (button hover, badge change)."
+      },
+      {
+        "name": "ease-out-fast",
+        "value": "cubic-bezier(0.0, 0.0, 0.2, 1)",
+        "purpose": "Dropdown open, panel slide-in. Fast exit feels snappy."
+      },
+      {
+        "name": "duration-short",
+        "value": "150ms",
+        "purpose": "Button hover, focus ring, badge state change."
+      },
+      {
+        "name": "duration-standard",
+        "value": "200ms",
+        "purpose": "Card lift, panel transitions."
+      },
+      {
+        "name": "duration-long",
+        "value": "300ms",
+        "purpose": "Modal open, sidebar slide."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action button. Navy background, no radius, uppercase label font. Gold on hover.",
+      "html": "<button class=\"ds-btn-primary\">APPROVE</button>",
+      "css": ".ds-btn-primary { background: #373652; color: #fff; padding: 13px 29px; border: none; border-radius: 0; font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background: #fcb514; } .ds-btn-primary:focus-visible { outline: 2px solid #fcb514; outline-offset: 2px; } .ds-btn-primary:active { background: #262b4b; }"
+    },
+    {
+      "name": "Gold CTA Button",
+      "kind": "button",
+      "refersTo": "button-gold",
+      "description": "Highest-priority CTA (Submit Activity). Gold background with navy text.",
+      "html": "<button class=\"ds-btn-gold\">SUBMIT ACTIVITY</button>",
+      "css": ".ds-btn-gold { background: #fcb514; color: #262b4b; padding: 13px 29px; border: none; border-radius: 0; font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-gold:hover { background: #f7cf42; } .ds-btn-gold:focus-visible { outline: 2px solid #262b4b; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action (Edit). Outline style, no fill.",
+      "html": "<button class=\"ds-btn-ghost\">EDIT</button>",
+      "css": ".ds-btn-ghost { background: transparent; color: #262b4b; padding: 12px 28px; border: 1px solid #373652; border-radius: 0; font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-ghost:hover { background: #373652; color: #fff; } .ds-btn-ghost:focus-visible { outline: 2px solid #fcb514; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Badge — OPEN",
+      "kind": "chip",
+      "refersTo": "badge-open",
+      "description": "Ticket status badge for open/active incidents. Gold background signals urgency.",
+      "html": "<span class=\"ds-badge ds-badge-open\">OPEN</span>",
+      "css": ".ds-badge { display: inline-block; font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 8px; border-radius: 2px; line-height: 1; } .ds-badge-open { background: #fcb514; color: #262b4b; } .ds-badge-pending { background: #373652; color: #ffffff; } .ds-badge-done { background: #262b4b; color: #ffffff; }"
+    },
+    {
+      "name": "Ticket Card",
+      "kind": "card",
+      "refersTo": "card-ticket",
+      "description": "List-view card for a service desk ticket. Selected state gets gold left border.",
+      "html": "<div class=\"ds-ticket-card\"><div class=\"ds-ticket-card__header\"><span class=\"ds-badge ds-badge-open\">OPEN</span><span class=\"ds-ticket-card__id\">#7001</span></div><div class=\"ds-ticket-card__title\">Nginx not responding on customer VM</div><div class=\"ds-ticket-card__meta\">Acme Corp · High Priority</div></div>",
+      "css": ".ds-ticket-card { background: #ffffff; border: 1px solid #e5e7ea; border-radius: 4px; padding: 16px; cursor: pointer; transition: box-shadow 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms cubic-bezier(0.4,0,0.2,1); } .ds-ticket-card:hover { box-shadow: 0 2px 8px rgba(38,43,75,0.12); border-color: #dadada; } .ds-ticket-card.is-selected { border-left: 4px solid #fcb514; padding-left: 12px; } .ds-ticket-card__header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; } .ds-ticket-card__id { font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 700; color: #808080; letter-spacing: 0.05em; } .ds-ticket-card__title { font-family: 'Inter', Arial, sans-serif; font-size: 1rem; font-weight: 600; color: #262b4b; line-height: 1.3; margin-bottom: 6px; } .ds-ticket-card__meta { font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 400; color: #808080; }"
+    },
+    {
+      "name": "Command Approval Panel",
+      "kind": "custom",
+      "refersTo": "command-approval",
+      "description": "The human-in-the-loop core. Shows AI-proposed shell command with approve/edit/reject actions. Gold left accent border while pending.",
+      "html": "<div class=\"ds-cmd-panel\"><div class=\"ds-cmd-panel__header\"><span class=\"ds-badge ds-badge-open\">AI PROPOSAL</span></div><pre class=\"ds-cmd-panel__command\">sudo systemctl restart nginx</pre><p class=\"ds-cmd-panel__reason\">Nginx process is not running. Restarting the service should restore the customer's web endpoint without modifying any configuration.</p><div class=\"ds-cmd-panel__actions\"><button class=\"ds-btn-primary\">APPROVE</button><button class=\"ds-btn-ghost\">EDIT</button><button class=\"ds-cmd-panel__reject\">Reject</button></div></div>",
+      "css": ".ds-cmd-panel { background: #ffffff; border: 1px solid #e5e7ea; border-left: 4px solid #fcb514; border-radius: 4px; padding: 20px 24px; } .ds-cmd-panel__header { margin-bottom: 12px; } .ds-cmd-panel__command { background: #f3f2ea; border: 1px solid #dadada; border-radius: 2px; padding: 12px 16px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 0.875rem; color: #262b4b; line-height: 1.6; margin: 0 0 14px; white-space: pre-wrap; word-break: break-all; } .ds-cmd-panel__reason { font-family: 'Inter', Arial, sans-serif; font-size: 0.9375rem; color: #373652; line-height: 1.5; margin: 0 0 20px; max-width: 72ch; } .ds-cmd-panel__actions { display: flex; align-items: center; gap: 12px; } .ds-cmd-panel__reject { background: none; border: none; font-family: 'Inter', Arial, sans-serif; font-size: 0.875rem; font-weight: 500; color: #808080; cursor: pointer; padding: 4px 0; text-decoration: underline; } .ds-cmd-panel__reject:hover { color: #c0392b; }"
+    },
+    {
+      "name": "Log Viewer",
+      "kind": "custom",
+      "refersTo": "log-viewer",
+      "description": "Scrollable command execution log. Mono font, warm-surface background. Not a dark terminal.",
+      "html": "<div class=\"ds-log\"><div class=\"ds-log__line\"><span class=\"ds-log__ts\">10:04:31</span><span class=\"ds-log__cmd\">$ sudo systemctl restart nginx</span></div><div class=\"ds-log__line\"><span class=\"ds-log__ts\">10:04:32</span><span class=\"ds-log__out\">Synchronizing state of nginx.service with SysV service script...</span></div><div class=\"ds-log__line\"><span class=\"ds-log__ts\">10:04:33</span><span class=\"ds-log__out\">Active: active (running)</span></div></div>",
+      "css": ".ds-log { background: #f3f2ea; border: 1px solid #dadada; border-radius: 4px; padding: 16px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 0.8125rem; line-height: 1.6; overflow-y: auto; max-height: 400px; } .ds-log__line { display: flex; gap: 16px; padding: 2px 0; } .ds-log__ts { color: #808080; flex-shrink: 0; user-select: none; } .ds-log__cmd { color: #262b4b; font-weight: 600; } .ds-log__out { color: #373652; } .ds-log__err { color: #c0392b; }"
+    },
+    {
+      "name": "Top Navigation",
+      "kind": "nav",
+      "refersTo": "nav-top",
+      "description": "Primary navigation bar. Deep navy background, white logo and text, gold hover underline.",
+      "html": "<nav class=\"ds-nav\"><div class=\"ds-nav__brand\">techbold</div><ul class=\"ds-nav__links\"><li><a class=\"ds-nav__link ds-nav__link--active\" href=\"#\">TICKETS</a></li><li><a class=\"ds-nav__link\" href=\"#\">ACTIVITY LOG</a></li><li><a class=\"ds-nav__link\" href=\"#\">SETTINGS</a></li></ul></nav>",
+      "css": ".ds-nav { background: #262b4b; display: flex; align-items: center; padding: 0 24px; height: 56px; gap: 32px; } .ds-nav__brand { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-size: 1.25rem; font-weight: 900; color: #ffffff; letter-spacing: -0.02em; text-transform: uppercase; } .ds-nav__links { display: flex; gap: 0; list-style: none; margin: 0; padding: 0; height: 100%; } .ds-nav__link { display: flex; align-items: center; padding: 0 16px; font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255,255,255,0.75); text-decoration: none; border-bottom: 3px solid transparent; transition: color 150ms, border-color 150ms, background 150ms; height: 100%; } .ds-nav__link:hover { color: #ffffff; background: rgba(252,181,20,0.15); border-bottom-color: #fcb514; } .ds-nav__link--active { color: #ffffff; border-bottom-color: #fcb514; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Standard text input. Navy focus border, no glow.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field__label\">TICKET ID</label><input class=\"ds-field__input\" type=\"text\" placeholder=\"Search tickets...\" /></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; } .ds-field__label { font-family: 'Inter', Arial, sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #373652; } .ds-field__input { background: #ffffff; border: 1px solid #dadada; border-radius: 4px; padding: 10px 14px; font-family: 'Inter', Arial, sans-serif; font-size: 0.875rem; font-weight: 400; color: #262b4b; line-height: 1.5; transition: border-color 150ms cubic-bezier(0.4,0,0.2,1); outline: none; } .ds-field__input::placeholder { color: #808080; } .ds-field__input:focus { border-color: #262b4b; } .ds-field__input:disabled { background: #fbfbfb; border-color: #dadada; color: #808080; cursor: not-allowed; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Technician's Console",
+    "overview": "This is a precision instrument, not a dashboard. Every screen exists to help a trained professional solve a live incident faster and with more confidence. The design draws directly from techbold's established brand: deep navy anchors the structure, amber gold marks what demands attention, and sharp edges signal authority. Nothing decorative. Nothing that makes the technician hunt for the next action.\n\nThe system rejects the generic SaaS-admin look — the light-gray-everything, brand-agnostic 'tool' that could belong to any company. This workspace belongs visibly to techbold. It also rejects the hacker-terminal cliché: black backgrounds and green monospace are atmosphere, not usability. The visual logic here is corporate precision: a Bloomberg terminal meets the techbold brand standards guide.\n\nThe AI is a participant, not the hero. It proposes; the technician decides. The visual hierarchy enforces this — human actions are primary, AI output is clearly labeled and secondary until the technician acts on it.",
+    "keyCharacteristics": [
+      "Navy-and-gold chromatics from techbold's live website, exact values",
+      "Sharp corners (border-radius: 0 on interactive elements)",
+      "Uppercase labels and CTAs, tight tracking",
+      "Monospace font for all shell output, commands, and logs",
+      "Gold used sparingly as a signal color, never as background texture"
+    ],
+    "rules": [
+      {
+        "name": "The Gold-Is-Signal Rule",
+        "body": "Gold appears on 15% or less of any screen. When gold is on screen, it is pointing at something — a status, an action, a live state. If gold is everywhere, the signal is gone. Ration it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Navy-as-Structure Rule",
+        "body": "Deep navy (#262b4b) belongs on structural, non-interactive surfaces (nav bar, sidebar top, section headers). The mid-navy (#373652) belongs on interactive elements (buttons, toggles). Do not invert these.",
+        "section": "colors"
+      },
+      {
+        "name": "The Uppercase-Is-a-Label Rule",
+        "body": "Uppercase text is reserved for labels: nav items, button text, status badges, field labels. Body copy, ticket descriptions, and AI output are always sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-at-Rest Rule",
+        "body": "Shadows are state, not style. An element at rest is flat; it lifts on hover or when it floats above the document. If you find yourself adding a shadow to a resting card 'to give it depth,' use a 1px solid #e5e7ea border instead.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use #262b4b (deep navy) as the structural anchor — top nav, sidebar headers, the dominant dark surface",
+      "Do use #fcb514 (gold) to mark what is active, selected, or demanding attention — and then stop",
+      "Do use border-radius: 0 on all buttons; use 4px on cards and inputs — the mix is intentional",
+      "Do use uppercase + 0.05em tracking for all label text: nav items, button labels, status badges, field labels",
+      "Do render all shell commands and SSH output in JetBrains Mono on the warm-surface background (#f3f2ea)",
+      "Do keep body text at a maximum 72ch line length in any reading context",
+      "Do pair gold backgrounds with navy text only — never gold text on white (fails contrast)",
+      "Do label every AI output clearly: 'AI Proposal', 'AI Reasoning', 'AI Generated' in the label style",
+      "Do make the Approve / Edit / Reject triad the most prominent element when a command is pending",
+      "Do include @media (prefers-reduced-motion: reduce) alternatives for all transitions"
+    ],
+    "donts": [
+      "Don't use a dark or black terminal background anywhere in the UI — this is a branded corporate tool, not a hacker interface",
+      "Don't use gold (#fcb514) as body text color on white or light backgrounds — contrast fails WCAG AA",
+      "Don't use border-radius greater than 12px on any element — the brand language is sharp",
+      "Don't add gradients — background fills are solid; techbold's site uses no gradients",
+      "Don't use purple, neon, or glow effects — wrong register for a professional IT firm",
+      "Don't make the AI the hero — the AI proposes, the technician decides; never style AI output more prominently than human actions",
+      "Don't use glassmorphism or frosted glass effects — off-brand",
+      "Don't scatter gold across every section as decoration; the Gold-Is-Signal Rule makes each appearance matter",
+      "Don't use consumer chat-interface patterns (bubble messages, avatar + text rows) for the AI interaction"
+    ]
+  }
+}
