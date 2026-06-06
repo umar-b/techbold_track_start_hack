@@ -15,7 +15,7 @@ may pre-fill the plan as hypotheses-to-verify (ADR-0009), never actions-to-apply
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from . import llm
 
@@ -34,7 +34,9 @@ Hard rules:
 - Minimal change. Never destructive blanket commands. Never reinitialise a database or remove
   customer data. Never reconfigure the app to run as a DB superuser. Never read secrets
   (/etc/shadow, *.env, private keys).
-- Validate with the provided test when present: `sudo /opt/hackathon/public-test.sh`.
+- The provided validation `sudo /opt/hackathon/public-test.sh` is STATE-CHANGING (GATED): put it
+  in the plan's "validation" list (it runs only after the technician approves) — NEVER as a
+  diagnose step. Confirm the symptom with read-only checks (service status, logs, ports, a file).
 - Each diagnose step is ONE plain command (e.g. `systemctl status nginx`, `ss -tlnp`). Do NOT
   wrap commands in `bash -lc`, `sh -c`, or `eval` — plain read-only commands run immediately,
   wrapped ones must wait for manual approval. `sudo` is fine and available (passwordless).
@@ -104,8 +106,20 @@ def _unwrap(out: Any) -> Any:
 
 def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
-                   must_plan: bool = False) -> Dict[str, Any]:
+                   must_plan: bool = False,
+                   rejected: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     related = ("RELATED PAST INCIDENTS (verify against live evidence, do not assume):\n" + memory) if memory else ""
+    # Feedback on commands the safety layer already refused as non-read-only, so the agent
+    # stops re-proposing them and instead picks a read-only probe or puts the change in a plan.
+    refused = ""
+    if rejected:
+        listed = "\n".join(f"- {r.get('command','')}  ({r.get('safety_reason') or 'not read-only'})"
+                           for r in rejected)
+        refused = (
+            "ALREADY REJECTED (these are NOT read-only, so they cannot be diagnose steps). Do NOT "
+            "propose them again — run a read-only probe instead, or put the change in a plan:\n"
+            f"{listed}\n\n"
+        )
     closing = (
         "You now have enough evidence. Respond with action=plan — an ordered list of fix steps "
         "plus validation commands. Use action=finish ONLY if the system is already healthy and "
@@ -117,7 +131,7 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
         f"GUIDEBOOK:\n{load_guidebook()}\n\n"
         f"TICKET #{ticket.get('id')}: {ticket.get('title','')}\n{ticket.get('description','')}\n\n"
         f"SYSTEM: {system}\n\n{related}\n\n"
-        f"HISTORY:\n{_history_text(history)}\n\n{closing}"
+        f"HISTORY:\n{_history_text(history)}\n\n{refused}{closing}"
     )
     # All in-loop reasoning — both deciding the next diagnostic and producing the
     # plan — runs on the stronger reasoning model (ADR-0011). The cheap model is

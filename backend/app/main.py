@@ -38,6 +38,10 @@ logging.basicConfig(level=logging.INFO)
 # Analysis converges to a plan: force a plan after the soft limit, escalate at the hard limit.
 DIAGNOSE_SOFT_LIMIT = 6
 DIAGNOSE_HARD_LIMIT = 10
+# After this many diagnostics are REJECTED (proposed but not read-only), stop asking for
+# another diagnostic and force a plan — otherwise the agent re-proposes the same GATED command
+# (e.g. the validation script) every iteration until the hard limit, doing no useful work.
+REJECTED_DIAGNOSE_LIMIT = 2
 
 # The run loop advances on a background worker so POST handlers return immediately and
 # the browser sees diagnostics stream in over SSE (ADR-0008). `_submit` is overridden to
@@ -196,13 +200,18 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
             return
         executed = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
         attempts = sum(1 for s in run["steps"] if s["kind"] == "diagnose")
+        rejected = [s for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "rejected"]
         # Bound by TOTAL diagnostic attempts so an unreachable host (every diagnostic
         # failing, never "executed") still terminates instead of looping forever.
         if attempts >= DIAGNOSE_HARD_LIMIT:
             _escalate(run, "could not converge on a plan after diagnostics")
             return
-        must_plan = executed >= DIAGNOSE_SOFT_LIMIT
-        action = agent.propose_action(ticket, system, _executed_history(run), memory=mem, must_plan=must_plan)
+        # Force a plan once we have enough evidence OR the agent keeps proposing non-read-only
+        # "diagnostics": repeated rejections mean it wants to change state, which belongs in a
+        # plan — not in a diagnose step re-proposed forever.
+        must_plan = executed >= DIAGNOSE_SOFT_LIMIT or len(rejected) >= REJECTED_DIAGNOSE_LIMIT
+        action = agent.propose_action(ticket, system, _executed_history(run), memory=mem,
+                                      must_plan=must_plan, rejected=rejected)
         kind = action.get("action")
         if kind == "plan":
             _set_plan(run, action)

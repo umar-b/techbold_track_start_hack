@@ -6,7 +6,9 @@ Method, not recipes (ADR-0003). Use this to reason; do not blindly apply steps.
 1. Gather read-only evidence (service state, logs, ports, disk, config).
 2. Rank hypotheses with the evidence for each — pick the cheapest to test first.
 3. Apply the **smallest** change that fixes the **root cause**, not the symptom.
-4. Validate: re-check the symptom and run `sudo /opt/hackathon/public-test.sh` if present.
+4. Validate: re-check the symptom with read-only checks. The provided test
+   `sudo /opt/hackathon/public-test.sh` is GATED — include it in the plan's validation (it runs
+   after the technician approves), never as a standalone diagnostic.
 5. Confirm persistence (see below).
 
 ## Persistence (graded — ADR-0005)

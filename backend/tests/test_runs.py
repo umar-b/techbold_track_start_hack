@@ -201,6 +201,31 @@ def test_finish_with_no_successful_evidence_escalates(env, monkeypatch):
     assert run["status"] == "escalated"  # all diagnostics failed -> can't report "resolved"
 
 
+def test_repeated_gated_diagnostic_does_not_loop(env, monkeypatch):
+    client, _ = env
+    # Regression: the agent keeps proposing a GATED command (e.g. the validation script) as a
+    # "diagnostic". It must NOT spin re-proposing it up to the hard limit — after a couple of
+    # rejections the loop forces a plan and (since this stub never plans) escalates. The agent
+    # must also RECEIVE its rejected attempts as feedback rather than flying blind.
+    seen_rejected = []
+
+    def fake(ticket, system, history, memory="", must_plan=False, rejected=None):
+        seen_rejected.append(len(rejected or []))
+        return {"action": "diagnose", "command": "sudo /opt/hackathon/public-test.sh",
+                "rationale": "validate first"}
+
+    monkeypatch.setattr(main_mod.agent, "propose_action", fake)
+    run = client.post("/api/runs", json={"ticket_id": 7001}).json()
+
+    assert run["status"] == "escalated"
+    diagnoses = [s for s in run["steps"] if s["kind"] == "diagnose"]
+    # Converges fast — bounded by REJECTED_DIAGNOSE_LIMIT (+1), well under the hard limit of 10.
+    assert len(diagnoses) <= main_mod.REJECTED_DIAGNOSE_LIMIT + 1
+    assert diagnoses and all(s["status"] == "rejected" for s in diagnoses)
+    # The agent was told about its earlier rejected attempts (so a real LLM could self-correct).
+    assert max(seen_rejected) >= 1
+
+
 def test_tickets_proxy(env):
     client, _ = env
     assert client.get("/api/tickets").status_code == 200
