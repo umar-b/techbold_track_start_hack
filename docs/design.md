@@ -251,7 +251,87 @@ Technician reviews and edits the ERP activity draft. On confirm:
 
 ---
 
-## 6. Backend Modules
+## 6. Known Weaknesses & Solutions
+
+This section documents critical issues identified in design review and how they are resolved.
+
+### W1 — WebSocket drop orphans agent session
+
+**Problem:** Agent coroutine awaits technician approval on a WebSocket. If connection drops (browser refresh, network blip), the coroutine is orphaned with no way to reconnect. Demo-killer.
+
+**Solution:** Decouple approval wait from WebSocket lifecycle.
+- Agent awaits a server-side `asyncio.Queue` per session, not the WebSocket directly.
+- Session state (current phase + pending payload) persisted to disk at each phase boundary.
+- On reconnect: `GET /agent/{session_id}/state` returns current phase and pending payload.
+- Frontend rehydrates from state, posts response to queue — coroutine resumes.
+- Session state file: `./data/sessions/{session_id}.json`
+
+### W2 — sentence-transformers model downloads at demo time
+
+**Problem:** Model (~80MB) downloads from Hugging Face at first runtime. Shared hackathon WiFi makes this a failure point.
+
+**Solution:** Pre-bake model into Docker image:
+```dockerfile
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+```
+Additionally: if ChromaDB collection is empty (first incident ever), skip memory retrieval step gracefully — return empty list, log a warning, continue without crashing.
+
+### W3 — Safety filter bypassable via shell tricks
+
+**Problem:** String matching catches `chmod -R 777` but not `chmod -R $(printf '%o' 511)` or `bash -c 'rm -rf /var/lib/mysql'`. The outer command looks safe; the inner is dangerous.
+
+**Solution:** Three-layer safety:
+1. **LLM system prompt** — agent instructed never to generate dangerous patterns; first gate.
+2. **Structured parse** — safety filter extracts the real executable + args after shell variable expansion where detectable. `bash -c '...'` triggers deeper inspection of the inner string.
+3. **Explicit intent logging** — before any `config_edit` or `file_operations` command, agent must declare `target_path` and `intent` in the plan step. Commands with unresolvable targets are blocked.
+
+Hard-blocks added: any command containing `bash -c`, `sh -c`, `eval`, `$(...)` as part of a write/delete operation is blocked unless target is provably safe.
+
+### W4 — Category approval too coarse
+
+**Problem:** Approving `config_edit` implicitly approves editing `/etc/sudoers`, `/etc/passwd`, `/etc/ssh/sshd_config` — files that should never be touched.
+
+**Solution:**
+- Each plan step with file writes includes explicit `target_path`.
+- Approval UI shows per-step: `config_edit → /etc/nginx/sites-enabled/app.conf` — not just the category name.
+- Safety filter hard-blocks writes to a path blocklist regardless of category approval:
+  - `/etc/sudoers`, `/etc/passwd`, `/etc/shadow`, `/etc/group`
+  - `/etc/ssh/sshd_config`, `/etc/ssh/authorized_keys`
+  - Any `~/.ssh/` path
+  - `/boot/`, `/sys/`, `/proc/`
+
+### W5 — Context window bloat over long agent sessions
+
+**Problem:** 25 steps × average 2000 tokens of stdout = ~50,000 tokens in message history. Responses slow down, cost spikes, model limits approached.
+
+**Solution:** Rolling summarization at phase boundaries:
+- After Phase 2: LLM compresses full diagnostic output into a structured summary (~500 tokens). Raw stdout stored in audit log, removed from message history.
+- After Phase 3: reproduction result summarized to one paragraph.
+- During Phase 6: keep only last 5 step results in full; earlier steps summarized as "Step N: [command] → [one-line result]".
+- Summary format is structured JSON so the agent can reference specific facts without re-reading raw output.
+
+### W6 — Partial sessions lose diagnostic signal
+
+**Problem:** Memory only saves on full resolution. Abandoned sessions lose exploration findings and failed fix attempts — valuable "what not to try" signal.
+
+**Solution:** Partial memory save on abort.
+- If session reached at least Phase 3 (reproduction confirmed): save `status: partial` memory entry.
+- Contains: ticket description, system state snapshot, root cause hypotheses, failed commands + why they failed, reason for abort.
+- Tagged `status: partial` in ChromaDB metadata.
+- Retrieval presents partial entries differently: "Previous partial investigation found X, abandoned because Y — don't start with approach Z."
+
+### W7 — SSH connection timeout during approval wait
+
+**Problem:** Technician takes several minutes to review the plan. paramiko connection times out. Agent resumes, tries to execute — SSH error — session broken.
+
+**Solution:**
+- `transport.set_keepalive(30)` — keepalive packets every 30 seconds.
+- SSH reconnect wrapper in `ssh_runner.py`: on `SSHException` or `NoValidConnectionsError`, re-establish connection from stored credentials before retrying command.
+- Max 3 reconnect attempts with exponential backoff before marking session as failed.
+
+---
+
+## 7. Backend Modules
 
 ```
 backend/
@@ -287,7 +367,7 @@ backend/
 
 ---
 
-## 7. Command Categories & Safety
+## 8. Command Categories & Safety
 
 ### Categories (defined in guidebook.md)
 
@@ -313,7 +393,7 @@ backend/
 
 ---
 
-## 8. Memory System (ChromaDB)
+## 9. Memory System (ChromaDB)
 
 ### Why semantic vector search
 
@@ -341,7 +421,7 @@ This gives the agent targeted starting points without flooding the context with 
 
 ---
 
-## 9. LLM Abstraction
+## 10. LLM Abstraction
 
 Single file `core/llm.py` with one function: `chat(messages, tools=None) → response`.
 
@@ -358,7 +438,7 @@ Tool definitions translated to provider-specific format inside this layer. Rest 
 
 ---
 
-## 10. WebSocket Event Protocol
+## 11. WebSocket Event Protocol
 
 All real-time communication over `WS /agent/{session_id}/ws`.
 
@@ -411,7 +491,7 @@ All real-time communication over `WS /agent/{session_id}/ws`.
 
 ---
 
-## 11. Frontend Screens
+## 12. Frontend Screens
 
 ### Screen 1 — Ticket List
 - Table: ticket ID, title, customer, priority, status, created_at
@@ -450,7 +530,7 @@ Split layout:
 
 ---
 
-## 12. Tech Stack Summary
+## 13. Tech Stack Summary
 
 | Layer | Technology | Notes |
 |---|---|---|
@@ -466,7 +546,7 @@ Split layout:
 
 ---
 
-## 13. What Wins the Competition
+## 14. What Wins the Competition
 
 **B category (35pts) is won by solving incidents correctly.** The memory system and guidebook are the competitive differentiators — the agent starts each incident with context from similar past fixes rather than from zero. Better starting context → better root cause identification → better fix → more points.
 
