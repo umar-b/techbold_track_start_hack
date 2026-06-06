@@ -42,6 +42,9 @@ def test_returns_none_when_client_raises():
     assert out is None
 
 
-def test_returns_none_without_credentials():
-    # No client passed and no Azure creds configured -> None, never an exception.
+def test_returns_none_without_credentials(monkeypatch):
+    # No client passed and no Azure creds -> None, never an exception or a network call.
+    from app.config import settings
+    monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "")
     assert llm.complete_json("sys", "usr") is None

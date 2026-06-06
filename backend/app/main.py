@@ -34,6 +34,10 @@ logging.basicConfig(level=logging.INFO)
 
 _TERMINAL = {"finished", "aborted", "escalated"}
 
+# Analysis converges to a plan: force a plan after the soft limit, escalate at the hard limit.
+DIAGNOSE_SOFT_LIMIT = 6
+DIAGNOSE_HARD_LIMIT = 10
+
 # --- Phoenix dependency (overridable in tests) ----------------------------- #
 _phoenix: Optional[PhoenixClient] = None
 
@@ -136,82 +140,103 @@ def _run_command(run, system, step, audit) -> bool:
     return res.exit_code == 0
 
 
-def _advance(run, ticket, system) -> None:
-    """Diagnostic phase: auto-run SAFE reads until the agent emits a plan or finish."""
+def _set_plan(run, action) -> None:
+    steps = action.get("steps", []) or []
+    for st in steps:
+        st["risk"] = check_command(st.get("command", "")).tier.value
+    run["plan"] = {"root_cause": action.get("root_cause", ""), "steps": steps,
+                   "validation": action.get("validation", []) or []}
+    run["status"] = "awaiting_plan_approval"
+
+
+def _escalate(run, reason: str) -> None:
+    _new_step(run, "finish", rationale=f"Escalated to technician: {reason}", status="done")
+    run["status"] = "escalated"
+    store.audit(run["id"]).add("escalated", reason=reason)
+    _close_ssh(run["id"])
+
+
+def _analyze(run, ticket, system) -> None:
+    """Analysis phase: run read-only diagnostics, then converge to a Plan (forced after a
+    soft limit, escalate at the hard limit). Diagnostics are read-only only; a mutating
+    "diagnostic" is rejected — fixes belong in a Plan the technician approves."""
     audit = store.audit(run["id"])
-    run["status"] = "diagnosing"
-    guard = 0
-    max_guard = settings.AGENT_MAX_STEPS * 2
-    while guard < max_guard:
-        guard += 1
-        if len([s for s in run["steps"] if s["status"] == "executed"]) >= settings.AGENT_MAX_STEPS:
-            break
-        action = agent.propose_action(ticket, system, _executed_history(run))
+    run["status"] = "analyzing"
+    while True:
+        diagnostics = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
+        if diagnostics >= DIAGNOSE_HARD_LIMIT:
+            _escalate(run, "could not converge on a plan after diagnostics")
+            return
+        must_plan = diagnostics >= DIAGNOSE_SOFT_LIMIT
+        action = agent.propose_action(ticket, system, _executed_history(run), must_plan=must_plan)
         kind = action.get("action")
+        if kind == "plan":
+            _set_plan(run, action)
+            audit.add("plan_proposed", root_cause=run["plan"]["root_cause"], steps=len(run["plan"]["steps"]))
+            return
         if kind == "finish":
-            _new_step(run, "finish", rationale=action.get("summary", ""), status="done")
+            _new_step(run, "finish", rationale=action.get("summary", "System already healthy; no change needed."),
+                      status="done")
             run["status"] = "finished"
-            audit.add("run_finished", summary=action.get("summary", ""))
+            audit.add("agent_reports_resolved", summary=action.get("summary", ""))
             _close_ssh(run["id"])
             return
-        if kind == "plan":
-            steps = action.get("steps", []) or []
-            for st in steps:
-                st["risk"] = check_command(st.get("command", "")).tier.value
-            run["plan"] = {"root_cause": action.get("root_cause", ""), "steps": steps,
-                           "validation": action.get("validation", []) or []}
-            run["status"] = "awaiting_plan_approval"
-            audit.add("plan_proposed", root_cause=run["plan"]["root_cause"], steps=len(steps))
-            return
-        # diagnose
+        # diagnose — read-only only
         cmd = action.get("command", "")
         verdict = check_command(cmd)
         step = _new_step(run, "diagnose", cmd, action.get("rationale", ""), risk=verdict.tier)
         if verdict.tier is RiskTier.SAFE:
             _run_command(run, system, step, audit)
             continue
-        if verdict.tier is RiskTier.BLOCKED:
-            step["status"] = "blocked"
-            step["safety_reason"] = verdict.reason
-            audit.add("command_blocked", command=cmd, reason=verdict.reason)
-            continue
-        step["status"] = "awaiting_approval"  # a mutating "diagnostic" — gate it
-        run["status"] = "awaiting_approval"
-        audit.add("approval_required", command=cmd)
-        return
-    _new_step(run, "finish", rationale="Reached step budget.", status="done")
-    run["status"] = "finished"
-    audit.add("run_finished", summary="step budget reached")
-    _close_ssh(run["id"])
+        step["status"] = "rejected"
+        step["safety_reason"] = verdict.reason
+        audit.add("nonread_diagnostic_rejected", command=cmd, risk=verdict.tier.value)
+        if must_plan:
+            _escalate(run, "agent did not produce a valid plan")
+            return
 
 
-def _execute_plan(run, ticket, system, edited_steps=None) -> None:
+def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
+    """Apply the WHOLE approved plan once (no mid-execution re-planning), then verify.
+    Verified -> finished (the technician then documents/submits). Not verified -> the agent
+    forms a NEW plan for the technician to approve (the only loop, and it is human-gated)."""
     audit = store.audit(run["id"])
     plan = run["plan"] or {}
     steps = edited_steps if edited_steps is not None else plan.get("steps", [])
+    validation = plan.get("validation", []) or []
     run["status"] = "executing"
     audit.add("plan_approved", steps=len(steps))
+    fixes_ok = True
     for st in steps:
         step = _new_step(run, "fix", st.get("command", ""), st.get("rationale", ""),
                          expected=st.get("expected", ""))
-        ok = _run_command(run, system, step, audit)
-        if not ok and step["status"] == "failed":
-            run["plan"] = None
-            _advance(run, ticket, system)  # fix failed -> re-plan or finish (ADR-0009)
-            return
+        fixes_ok = _run_command(run, system, step, audit) and fixes_ok
     run["status"] = "verifying"
-    for vc in plan.get("validation", []):
+    validation_ok = True
+    for vc in validation:
         step = _new_step(run, "validate", vc, "Validate the fix")
-        _run_command(run, system, step, audit)
+        validation_ok = _run_command(run, system, step, audit) and validation_ok
     run["plan"] = None
-    _advance(run, ticket, system)
+    verdict = validation_ok if validation else fixes_ok
+    if verdict:
+        run["status"] = "finished"
+        audit.add("verified_resolved")
+        _close_ssh(run["id"])
+    else:
+        audit.add("verification_failed")
+        _replan(run, ticket, system)
 
 
-def _pending_step(run) -> Optional[Dict[str, Any]]:
-    for s in reversed(run["steps"]):
-        if s["status"] == "awaiting_approval":
-            return s
-    return None
+def _replan(run, ticket, system) -> None:
+    """After a failed/rejected plan, the agent forms a NEW plan for the technician to approve."""
+    run["status"] = "analyzing"
+    action = agent.propose_action(ticket, system, _executed_history(run), must_plan=True)
+    if action.get("action") == "plan":
+        _set_plan(run, action)
+        store.audit(run["id"]).add("replan_proposed", root_cause=run["plan"]["root_cause"],
+                                   steps=len(run["plan"]["steps"]))
+    else:
+        _escalate(run, "could not form a new plan after a failed attempt")
 
 
 # --- app ------------------------------------------------------------------- #
@@ -245,7 +270,7 @@ def create_app() -> FastAPI:
         store.audit(run["id"]).add("run_started", ticket_id=body.ticket_id,
                                    ticket_title=ticket.get("title", ""))
         _erp(phoenix.set_status, body.ticket_id, "PENDING")
-        _advance(run, ticket, system)
+        _analyze(run, ticket, system)
         return run
 
     @app.get("/api/runs/{run_id}")
@@ -261,22 +286,13 @@ def create_app() -> FastAPI:
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
+        if run["status"] != "awaiting_plan_approval":
+            raise HTTPException(409, f"Nothing to approve (status={run['status']})")
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
-        if run["status"] == "awaiting_plan_approval":
-            steps = [s.model_dump() for s in body.steps] if body.steps is not None else None
-            _execute_plan(run, ticket, system, edited_steps=steps)
-            return run
-        if run["status"] == "awaiting_approval":
-            step = _pending_step(run)
-            if not step:
-                raise HTTPException(409, "No step awaiting approval")
-            if body.command:
-                step["command"] = body.command.strip()
-            _run_command(run, system, step, store.audit(run_id))
-            _advance(run, ticket, system)
-            return run
-        raise HTTPException(409, f"Nothing to approve (status={run['status']})")
+        steps = [s.model_dump() for s in body.steps] if body.steps is not None else None
+        _execute_and_verify(run, ticket, system, edited_steps=steps)
+        return run
 
     @app.post("/api/runs/{run_id}/reject")
     def reject(run_id: str, phoenix: PhoenixClient = Depends(get_phoenix)):
@@ -285,12 +301,9 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "Run not found")
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
-        step = _pending_step(run)
-        if step:
-            step["status"] = "rejected"
         run["plan"] = None
-        store.audit(run_id).add("rejected")
-        _advance(run, ticket, system)
+        store.audit(run_id).add("plan_rejected")
+        _replan(run, ticket, system)
         return run
 
     @app.post("/api/runs/{run_id}/abort")

@@ -4,13 +4,21 @@ All knobs in one place. Defaults are safe for import (so tests and the smoke
 suite never crash on a missing var); real values come from `.env` (see
 `.env.example`). Secrets stay in the environment, never in code.
 """
+from pathlib import Path
 from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Resolve the .env at the repo root regardless of the working directory the
+# backend is launched from (README runs `cd backend && uvicorn ...`, so a bare
+# ".env" would be looked up under backend/ and silently miss the real file).
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE), env_file_encoding="utf-8", extra="ignore"
+    )
 
     # Phoenix ERP
     PHOENIX_API_BASE_URL: str = "http://localhost:8000"

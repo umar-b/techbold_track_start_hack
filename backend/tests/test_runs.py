@@ -38,6 +38,9 @@ class FakePhoenix:
 @pytest.fixture
 def env(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "AUDIT_DIR", str(tmp_path))
+    # Keep tests hermetic: no real LLM/SSH calls even when .env has live creds.
+    monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "")
     monkeypatch.setattr(main_mod, "_execute",
                         lambda run, system, command, timeout=None: CommandResult("ok", "", 0, 5))
     fake = FakePhoenix()
@@ -61,7 +64,6 @@ def test_full_run_diagnose_plan_approve_finish(env, monkeypatch):
         {"action": "plan", "root_cause": "nginx not enabled",
          "steps": [{"command": "systemctl enable --now nginx", "expected": "active"}],
          "validation": ["curl -s http://localhost/health"]},
-        {"action": "finish", "summary": "nginx enabled and serving"},
     ])
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
     rid = run["id"]
@@ -96,6 +98,8 @@ def test_blocked_command_in_approved_plan_never_runs(env, monkeypatch):
     run = client.post(f"/api/runs/{rid}/approve", json={}).json()
     fix = [s for s in run["steps"] if s["kind"] == "fix"][0]
     assert fix["status"] == "blocked" and fix["risk"] == "BLOCKED"
+    # blocked fix -> verification fails -> agent re-plans; here it can't, so it escalates
+    assert run["status"] == "escalated"
 
 
 def test_abort_from_plan_gate(env, monkeypatch):

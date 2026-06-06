@@ -104,14 +104,20 @@ def _unwrap(out: Any) -> Any:
 
 def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
-                   client: Any = None) -> Dict[str, Any]:
+                   must_plan: bool = False, client: Any = None) -> Dict[str, Any]:
     related = ("RELATED PAST INCIDENTS (verify against live evidence, do not assume):\n" + memory) if memory else ""
+    closing = (
+        "You now have enough evidence. Respond with action=plan — an ordered list of fix steps "
+        "plus validation commands. Use action=finish ONLY if the system is already healthy and "
+        "needs no change. Do NOT diagnose further."
+        if must_plan else
+        "Propose the next single action as JSON: diagnose while still investigating, otherwise plan."
+    )
     user = (
         f"GUIDEBOOK:\n{load_guidebook()}\n\n"
         f"TICKET #{ticket.get('id')}: {ticket.get('title','')}\n{ticket.get('description','')}\n\n"
         f"SYSTEM: {system}\n\n{related}\n\n"
-        f"HISTORY:\n{_history_text(history)}\n\n"
-        f"Propose the next single action as JSON."
+        f"HISTORY:\n{_history_text(history)}\n\n{closing}"
     )
     out = _unwrap(llm.complete_json(_SYSTEM, user, client=client))
     if isinstance(out, dict) and out.get("action") in _ACTIONS:
