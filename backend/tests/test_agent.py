@@ -30,5 +30,19 @@ def test_rejects_malformed_llm_output_and_falls_back(monkeypatch):
     assert out["action"] in {"diagnose", "finish"}  # fell back to baseline
 
 
+def test_unwraps_nested_action_object(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete_json",
+                        lambda *a, **k: {"diagnose": {"action": "diagnose", "command": "uname -a"}})
+    out = agent.propose_action(TICKET, SYS, history=[])
+    assert out["action"] == "diagnose" and out["command"] == "uname -a"
+
+
+def test_unwraps_action_keyed_wrapper_without_inner_action(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete_json",
+                        lambda *a, **k: {"plan": {"root_cause": "x", "steps": []}})
+    out = agent.propose_action(TICKET, SYS, history=[])
+    assert out["action"] == "plan" and out["root_cause"] == "x"
+
+
 def test_guidebook_loads():
     assert "Persistence" in agent.load_guidebook()

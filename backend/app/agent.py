@@ -35,6 +35,9 @@ Hard rules:
   customer data. Never reconfigure the app to run as a DB superuser. Never read secrets
   (/etc/shadow, *.env, private keys).
 - Validate with the provided test when present: `sudo /opt/hackathon/public-test.sh`.
+- Each diagnose step is ONE plain command (e.g. `systemctl status nginx`, `ss -tlnp`). Do NOT
+  wrap commands in `bash -lc`, `sh -c`, or `eval` — plain read-only commands run immediately,
+  wrapped ones must wait for manual approval. `sudo` is fine and available (passwordless).
 
 Respond ONLY with a single JSON object. Include just the keys for the chosen action:
 - diagnose: {"action":"diagnose","command":"<one read-only shell command>","rationale":"<why>"}
@@ -78,6 +81,21 @@ def _baseline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
             "summary": "Baseline diagnostics complete (configure Azure OpenAI for full reasoning)."}
 
 
+def _unwrap(out: Any) -> Any:
+    """nano sometimes nests the action object (e.g. {"diagnose": {...}}); unwrap it."""
+    if not isinstance(out, dict):
+        return out
+    if out.get("action") in _ACTIONS:
+        return out
+    for key, value in out.items():
+        if isinstance(value, dict):
+            if value.get("action") in _ACTIONS:
+                return value
+            if key in _ACTIONS:  # {"plan": {...}} with no inner "action"
+                return {**value, "action": key}
+    return out
+
+
 def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
                    client: Any = None) -> Dict[str, Any]:
@@ -89,7 +107,7 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
         f"HISTORY:\n{_history_text(history)}\n\n"
         f"Propose the next single action as JSON."
     )
-    out = llm.complete_json(_SYSTEM, user, client=client)
+    out = _unwrap(llm.complete_json(_SYSTEM, user, client=client))
     if isinstance(out, dict) and out.get("action") in _ACTIONS:
         return out
     return _baseline(history)

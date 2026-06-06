@@ -52,11 +52,45 @@ def _erp(fn, *args, **kwargs):
         raise HTTPException(status_code=502, detail=f"ERP error: {exc}")
 
 
-# --- SSH execution (overridable in tests) ---------------------------------- #
+# --- SSH execution: one reused connection per run (overridable in tests) --- #
+# Opening a fresh connection per command causes SSH banner-timeout churn; reuse one
+# connection per run and reconnect once if it dropped (also covers an approval wait).
+_ssh_cache: Dict[str, SSHRunner] = {}
+
+
+def _ssh_for(run: Dict[str, Any], system: Dict[str, Any]) -> SSHRunner:
+    runner = _ssh_cache.get(run["id"])
+    if runner is not None and runner._client is not None:
+        return runner
+    runner = SSHRunner(host=system.get("ip", ""), port=int(system.get("port") or 22),
+                       username=system.get("username"), ticket_id=run["ticket_id"])
+    last: Optional[Exception] = None
+    for _ in range(2):  # tolerate a transient banner timeout on connect
+        try:
+            runner.__enter__()
+            _ssh_cache[run["id"]] = runner
+            return runner
+        except SSHError as exc:
+            last = exc
+    raise last  # type: ignore[misc]
+
+
+def _close_ssh(run_id: str) -> None:
+    runner = _ssh_cache.pop(run_id, None)
+    if runner is not None:
+        try:
+            runner.__exit__()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _execute(run: Dict[str, Any], system: Dict[str, Any], command: str, timeout=None):
-    with SSHRunner(host=system.get("ip", ""), port=int(system.get("port") or 22),
-                   username=system.get("username"), ticket_id=run["ticket_id"]) as ssh:
-        return ssh.run(command, timeout=timeout)
+    """Run a command on the run's reused SSH connection; reconnect once if it dropped."""
+    try:
+        return _ssh_for(run, system).run(command, timeout=timeout)
+    except SSHError:
+        _close_ssh(run["id"])
+        return _ssh_for(run, system).run(command, timeout=timeout)
 
 
 # --- run helpers ----------------------------------------------------------- #
@@ -118,6 +152,7 @@ def _advance(run, ticket, system) -> None:
             _new_step(run, "finish", rationale=action.get("summary", ""), status="done")
             run["status"] = "finished"
             audit.add("run_finished", summary=action.get("summary", ""))
+            _close_ssh(run["id"])
             return
         if kind == "plan":
             steps = action.get("steps", []) or []
@@ -147,6 +182,7 @@ def _advance(run, ticket, system) -> None:
     _new_step(run, "finish", rationale="Reached step budget.", status="done")
     run["status"] = "finished"
     audit.add("run_finished", summary="step budget reached")
+    _close_ssh(run["id"])
 
 
 def _execute_plan(run, ticket, system, edited_steps=None) -> None:
@@ -264,6 +300,7 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "Run not found")
         run["status"] = "aborted"
         store.audit(run_id).add("run_aborted")
+        _close_ssh(run_id)
         return run
 
     @app.get("/api/runs/{run_id}/activity-draft")
