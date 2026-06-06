@@ -41,3 +41,14 @@ per-deployment).
 ### Risks
 - nano may not support tool calling on the given `api_version`. Mitigation: verify early; design
   the strict-JSON fallback from the start.
+
+## Update — verified configuration (2026-06-06)
+
+Smoke checks confirmed the deployment is an **Azure AI Foundry project** endpoint
+(`…services.ai.azure.com/api/projects/…`) served over the **OpenAI-compatible v1 API**:
+- Call `POST {endpoint}/openai/v1/chat/completions` with `model=<deployment>` and **no
+  `api-version`** (the classic `…openai.azure.com` + api-version path returns 400). `llm.py`
+  uses the `openai` SDK's `OpenAI(base_url=endpoint + "/openai/v1/")` client.
+- **JSON mode works**; **native tool-calling does NOT reliably fire on nano** (returns text), so
+  JSON mode is the primary path — exactly the fallback this ADR anticipated.
+- Both `Authorization: Bearer` and `api-key` headers authenticate; `temperature` is accepted.

@@ -1,31 +1,323 @@
-"""FastAPI entrypoint — skeleton.
+"""FastAPI backend — technician workspace API + the human-in-the-loop run loop.
 
-This is intentionally minimal. Build your own API here for the frontend to call,
-and consume the Phoenix ERP mock from your backend (see docs/phoenix-openapi.yaml).
-Keep the ERP token and the SSH key on the backend — never in the browser.
+The ERP token and SSH key live only here, never in the browser. The run advances
+synchronously inside the POST handlers (ADR-0008): starting a run or approving a
+plan auto-runs SAFE diagnostics until a gate, executes GATED steps only inside an
+approved plan, and never runs a BLOCKED command. Every action is audited and
+redacted. SSE streams the step list for live progress.
+
+Handlers are sync `def` (they do blocking SSH/LLM work, so FastAPI runs them in a
+threadpool) — never block an async route.
 """
-from fastapi import FastAPI
+from __future__ import annotations
+
+import json
+import logging
+import time
+from typing import Any, Dict, List, Optional
+
+from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
-app = FastAPI(title="techbold AI Service Desk Autopilot — Team Backend")
+from . import activity as activity_mod
+from . import agent
+from . import schemas
+from .audit import redact
+from .config import settings
+from .phoenix_client import PhoenixClient, PhoenixError
+from .runstore import store
+from .safety import RiskTier, check_command
+from .ssh_runner import SSHError, SSHRunner
 
-# Open CORS for local dev so your React app can call this backend.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+logging.basicConfig(level=logging.INFO)
+
+_TERMINAL = {"finished", "aborted", "escalated"}
+
+# --- Phoenix dependency (overridable in tests) ----------------------------- #
+_phoenix: Optional[PhoenixClient] = None
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+def get_phoenix() -> PhoenixClient:
+    global _phoenix
+    if _phoenix is None:
+        _phoenix = PhoenixClient()
+    return _phoenix
 
 
-# TODO: add your routes. A typical shape (yours may differ):
-#   GET  /api/tickets              -> list tickets (via your Phoenix client)
-#   GET  /api/tickets/{id}         -> ticket + customer system
-#   POST /api/runs                 -> start an agent troubleshooting run
-#   POST /api/runs/{id}/approve    -> run the approved command over SSH
-#   POST /api/runs/{id}/activity   -> submit the activity to the ERP
+def _erp(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except PhoenixError as exc:
+        raise HTTPException(status_code=502, detail=f"ERP error: {exc}")
+
+
+# --- SSH execution (overridable in tests) ---------------------------------- #
+def _execute(run: Dict[str, Any], system: Dict[str, Any], command: str, timeout=None):
+    with SSHRunner(host=system.get("ip", ""), port=int(system.get("port") or 22),
+                   username=system.get("username"), ticket_id=run["ticket_id"]) as ssh:
+        return ssh.run(command, timeout=timeout)
+
+
+# --- run helpers ----------------------------------------------------------- #
+def _new_step(run, kind, command="", rationale="", risk=None, status="proposed", expected=""):
+    step = {"index": len(run["steps"]), "kind": kind, "command": command,
+            "rationale": rationale, "risk": risk.value if risk else None,
+            "expected": expected, "status": status, "result": None, "safety_reason": ""}
+    run["steps"].append(step)
+    return step
+
+
+def _executed_history(run) -> List[Dict[str, Any]]:
+    out = []
+    for s in run["steps"]:
+        if s["kind"] in ("diagnose", "fix", "validate") and s["status"] in ("executed", "failed"):
+            res = s["result"] or {}
+            out.append({"command": s["command"], "stdout": res.get("stdout", ""),
+                        "stderr": res.get("stderr", ""), "exit_code": res.get("exit_code")})
+    return out
+
+
+def _run_command(run, system, step, audit) -> bool:
+    """Safety-check then execute a step. Returns True on exit_code 0."""
+    verdict = check_command(step["command"])
+    step["risk"] = verdict.tier.value
+    if verdict.tier is RiskTier.BLOCKED:
+        step["status"] = "blocked"
+        step["safety_reason"] = verdict.reason
+        audit.add("command_blocked", command=step["command"], reason=verdict.reason)
+        return False
+    audit.add("command_approved", command=step["command"], risk=verdict.tier.value)
+    try:
+        res = _execute(run, system, step["command"])
+    except SSHError as exc:
+        step["status"] = "failed"
+        step["result"] = {"stdout": "", "stderr": str(exc), "exit_code": None, "duration_ms": None}
+        audit.add("command_failed", command=step["command"], error=str(exc))
+        return False
+    step["result"] = {"stdout": redact(res.stdout), "stderr": redact(res.stderr),
+                      "exit_code": res.exit_code, "duration_ms": res.duration_ms}
+    step["status"] = "executed" if res.exit_code == 0 else "failed"
+    audit.add("command_executed", command=step["command"], exit_code=res.exit_code)
+    return res.exit_code == 0
+
+
+def _advance(run, ticket, system) -> None:
+    """Diagnostic phase: auto-run SAFE reads until the agent emits a plan or finish."""
+    audit = store.audit(run["id"])
+    run["status"] = "diagnosing"
+    guard = 0
+    max_guard = settings.AGENT_MAX_STEPS * 2
+    while guard < max_guard:
+        guard += 1
+        if len([s for s in run["steps"] if s["status"] == "executed"]) >= settings.AGENT_MAX_STEPS:
+            break
+        action = agent.propose_action(ticket, system, _executed_history(run))
+        kind = action.get("action")
+        if kind == "finish":
+            _new_step(run, "finish", rationale=action.get("summary", ""), status="done")
+            run["status"] = "finished"
+            audit.add("run_finished", summary=action.get("summary", ""))
+            return
+        if kind == "plan":
+            steps = action.get("steps", []) or []
+            for st in steps:
+                st["risk"] = check_command(st.get("command", "")).tier.value
+            run["plan"] = {"root_cause": action.get("root_cause", ""), "steps": steps,
+                           "validation": action.get("validation", []) or []}
+            run["status"] = "awaiting_plan_approval"
+            audit.add("plan_proposed", root_cause=run["plan"]["root_cause"], steps=len(steps))
+            return
+        # diagnose
+        cmd = action.get("command", "")
+        verdict = check_command(cmd)
+        step = _new_step(run, "diagnose", cmd, action.get("rationale", ""), risk=verdict.tier)
+        if verdict.tier is RiskTier.SAFE:
+            _run_command(run, system, step, audit)
+            continue
+        if verdict.tier is RiskTier.BLOCKED:
+            step["status"] = "blocked"
+            step["safety_reason"] = verdict.reason
+            audit.add("command_blocked", command=cmd, reason=verdict.reason)
+            continue
+        step["status"] = "awaiting_approval"  # a mutating "diagnostic" — gate it
+        run["status"] = "awaiting_approval"
+        audit.add("approval_required", command=cmd)
+        return
+    _new_step(run, "finish", rationale="Reached step budget.", status="done")
+    run["status"] = "finished"
+    audit.add("run_finished", summary="step budget reached")
+
+
+def _execute_plan(run, ticket, system, edited_steps=None) -> None:
+    audit = store.audit(run["id"])
+    plan = run["plan"] or {}
+    steps = edited_steps if edited_steps is not None else plan.get("steps", [])
+    run["status"] = "executing"
+    audit.add("plan_approved", steps=len(steps))
+    for st in steps:
+        step = _new_step(run, "fix", st.get("command", ""), st.get("rationale", ""),
+                         expected=st.get("expected", ""))
+        ok = _run_command(run, system, step, audit)
+        if not ok and step["status"] == "failed":
+            run["plan"] = None
+            _advance(run, ticket, system)  # fix failed -> re-plan or finish (ADR-0009)
+            return
+    run["status"] = "verifying"
+    for vc in plan.get("validation", []):
+        step = _new_step(run, "validate", vc, "Validate the fix")
+        _run_command(run, system, step, audit)
+    run["plan"] = None
+    _advance(run, ticket, system)
+
+
+def _pending_step(run) -> Optional[Dict[str, Any]]:
+    for s in reversed(run["steps"]):
+        if s["status"] == "awaiting_approval":
+            return s
+    return None
+
+
+# --- app ------------------------------------------------------------------- #
+def create_app() -> FastAPI:
+    app = FastAPI(title="AI Service Desk Autopilot — Team Backend", version="1.0.0")
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    @app.get("/api/me")
+    def me(phoenix: PhoenixClient = Depends(get_phoenix)):
+        return _erp(phoenix.me)
+
+    @app.get("/api/tickets")
+    def tickets(status: Optional[str] = None, priority: Optional[str] = None,
+                sort: str = "date", phoenix: PhoenixClient = Depends(get_phoenix)):
+        return _erp(phoenix.list_tickets, status, priority, sort)
+
+    @app.get("/api/tickets/{ticket_id}")
+    def ticket_detail(ticket_id: int, phoenix: PhoenixClient = Depends(get_phoenix)):
+        return {"ticket": _erp(phoenix.get_ticket, ticket_id),
+                "system": _erp(phoenix.customer_system, ticket_id)}
+
+    @app.post("/api/runs")
+    def start_run(body: schemas.StartRunIn, phoenix: PhoenixClient = Depends(get_phoenix)):
+        ticket = _erp(phoenix.get_ticket, body.ticket_id)
+        system = _erp(phoenix.customer_system, body.ticket_id).get("system", {})
+        run = store.create(body.ticket_id)
+        store.audit(run["id"]).add("run_started", ticket_id=body.ticket_id,
+                                   ticket_title=ticket.get("title", ""))
+        _erp(phoenix.set_status, body.ticket_id, "PENDING")
+        _advance(run, ticket, system)
+        return run
+
+    @app.get("/api/runs/{run_id}")
+    def get_run(run_id: str):
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+        return run
+
+    @app.post("/api/runs/{run_id}/approve")
+    def approve(run_id: str, body: schemas.ApproveIn = Body(default=schemas.ApproveIn()),
+                phoenix: PhoenixClient = Depends(get_phoenix)):
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+        ticket = _erp(phoenix.get_ticket, run["ticket_id"])
+        system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
+        if run["status"] == "awaiting_plan_approval":
+            steps = [s.model_dump() for s in body.steps] if body.steps is not None else None
+            _execute_plan(run, ticket, system, edited_steps=steps)
+            return run
+        if run["status"] == "awaiting_approval":
+            step = _pending_step(run)
+            if not step:
+                raise HTTPException(409, "No step awaiting approval")
+            if body.command:
+                step["command"] = body.command.strip()
+            _run_command(run, system, step, store.audit(run_id))
+            _advance(run, ticket, system)
+            return run
+        raise HTTPException(409, f"Nothing to approve (status={run['status']})")
+
+    @app.post("/api/runs/{run_id}/reject")
+    def reject(run_id: str, phoenix: PhoenixClient = Depends(get_phoenix)):
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+        ticket = _erp(phoenix.get_ticket, run["ticket_id"])
+        system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
+        step = _pending_step(run)
+        if step:
+            step["status"] = "rejected"
+        run["plan"] = None
+        store.audit(run_id).add("rejected")
+        _advance(run, ticket, system)
+        return run
+
+    @app.post("/api/runs/{run_id}/abort")
+    def abort(run_id: str):
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+        run["status"] = "aborted"
+        store.audit(run_id).add("run_aborted")
+        return run
+
+    @app.get("/api/runs/{run_id}/activity-draft")
+    def activity_draft(run_id: str, phoenix: PhoenixClient = Depends(get_phoenix)):
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+        ticket = _erp(phoenix.get_ticket, run["ticket_id"])
+        return activity_mod.draft_activity(ticket, _executed_history(run))
+
+    @app.post("/api/runs/{run_id}/submit-activity")
+    def submit_activity(run_id: str, body: schemas.SubmitActivityIn,
+                        phoenix: PhoenixClient = Depends(get_phoenix)):
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+        audit = store.audit(run_id)
+        end = audit.entries[-1]["ts"] if audit.entries else run["created_at"]
+        payload = {
+            "ticket_id": run["ticket_id"],
+            "start_datetime": run["created_at"],
+            "end_datetime": end,
+            "description": redact(body.summary),
+            "summary": redact(body.summary),
+            "root_cause": redact(body.root_cause),
+            "actions_taken": redact(body.actions_taken),
+            "commands_summary": redact(body.commands_summary),
+            "validation_result": redact(body.validation_result),
+        }
+        created = _erp(phoenix.create_activity, payload)
+        if body.set_done:
+            _erp(phoenix.set_status, run["ticket_id"], "DONE")
+        audit.add("activity_submitted", ticket_id=run["ticket_id"])
+        return {"activity": created, "run": run}
+
+    @app.get("/api/runs/{run_id}/events")
+    def events(run_id: str):
+        def gen():
+            last = 0
+            for _ in range(600):
+                run = store.get(run_id)
+                if not run:
+                    break
+                steps = run["steps"]
+                while last < len(steps):
+                    yield f"data: {json.dumps({'type': 'step', 'step': steps[last]})}\n\n"
+                    last += 1
+                yield f"data: {json.dumps({'type': 'status', 'status': run['status']})}\n\n"
+                if run["status"] in _TERMINAL:
+                    break
+                time.sleep(0.5)
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    return app
+
+
+app = create_app()

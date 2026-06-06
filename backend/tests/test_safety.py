@@ -101,6 +101,19 @@ def test_targeted_chown_on_upload_dir_is_gated_not_blocked():
     assert check_command("chown -R www-data:www-data /var/www/portal/uploads").tier is RiskTier.GATED
 
 
+def test_compound_readonly_with_quoted_operators_is_safe():
+    # A real nano-produced diagnostic: pipes/|| live inside the awk program (quoted),
+    # so a quote-aware splitter must keep it read-only, not mis-classify it as GATED.
+    cmd = ("sudo ss -tulpn | awk 'NR==1||/:8080/{print}' ; "
+           "sudo systemctl is-enabled --quiet nginx && echo ok")
+    assert check_command(cmd).tier is RiskTier.SAFE
+
+
+def test_quoted_operator_does_not_hide_a_blocked_command():
+    # The real rm -rf / is outside quotes and must still be caught.
+    assert check_command("echo 'a | b' ; rm -rf /").tier is RiskTier.BLOCKED
+
+
 def test_empty_command_blocked():
     assert check_command("   ").tier is RiskTier.BLOCKED
 

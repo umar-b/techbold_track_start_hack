@@ -85,8 +85,45 @@ _SAFE_BINS = {
     "systemctl", "service", "apt", "apt-get", "dpkg", "pip", "pip3",
 }
 
-_SHELL_SPLIT = re.compile(r"\|\||&&|\||;")
 _PREFIX = {"sudo", "env", "time", "nice", "nohup", "ionice"}
+
+
+def _split_segments(cmd: str) -> list:
+    """Split on shell operators (; | || &&) that are OUTSIDE quotes.
+
+    Quote-aware so operators inside an awk/sed program or a quoted string don't
+    fracture the command (which would mis-classify a read-only pipeline as GATED).
+    A single `&` (e.g. `2>&1`, backgrounding) is kept, not treated as a separator.
+    """
+    segs, buf, quote, i = [], "", None, 0
+    while i < len(cmd):
+        c = cmd[i]
+        if quote:
+            buf += c
+            if c == quote:
+                quote = None
+            i += 1
+        elif c in ("'", '"'):
+            quote = c
+            buf += c
+            i += 1
+        elif c == ";":
+            segs.append(buf)
+            buf = ""
+            i += 1
+        elif c == "|":
+            segs.append(buf)
+            buf = ""
+            i += 2 if cmd[i:i + 2] == "||" else 1
+        elif cmd[i:i + 2] == "&&":
+            segs.append(buf)
+            buf = ""
+            i += 2
+        else:
+            buf += c
+            i += 1
+    segs.append(buf)
+    return [s for s in segs if s.strip()]
 
 
 def _strip_prefix(seg: str) -> str:
@@ -151,7 +188,7 @@ def check_command(command: str) -> SafetyVerdict:
     for pat, reason in _BLOCK_WHOLE:
         if re.search(pat, cmd, re.IGNORECASE):
             return SafetyVerdict(RiskTier.BLOCKED, reason)
-    segments = [s for s in _SHELL_SPLIT.split(cmd) if s.strip()]
+    segments = _split_segments(cmd)
     for seg in segments:
         for pat, reason in _BLOCK_SEG:
             if re.search(pat, seg, re.IGNORECASE):
