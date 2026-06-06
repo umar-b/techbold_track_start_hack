@@ -159,6 +159,31 @@ def test_second_concurrent_run_for_ticket_is_rejected(env, monkeypatch):
     assert client.post("/api/runs", json={"ticket_id": 7001}).status_code == 409
 
 
+def test_unreachable_host_escalates_instead_of_looping(env, monkeypatch):
+    client, _ = env
+    # Every diagnostic fails (host unreachable) and the agent only ever wants to probe.
+    monkeypatch.setattr(main_mod.agent, "propose_action",
+                        lambda *a, **k: {"action": "diagnose", "command": "systemctl status x", "rationale": "probe"})
+    monkeypatch.setattr(main_mod, "_execute",
+                        lambda run, system, command, timeout=None: CommandResult("", "unreachable", 1, 5))
+    run = client.post("/api/runs", json={"ticket_id": 7001}).json()
+    assert run["status"] == "escalated"
+    assert len([s for s in run["steps"] if s["kind"] == "diagnose"]) >= main_mod.DIAGNOSE_HARD_LIMIT
+
+
+def test_finish_with_no_successful_evidence_escalates(env, monkeypatch):
+    client, _ = env
+    actions = iter([
+        {"action": "diagnose", "command": "systemctl status x", "rationale": "probe"},
+        {"action": "finish", "summary": "looks fine"},
+    ])
+    monkeypatch.setattr(main_mod.agent, "propose_action", lambda *a, **k: next(actions))
+    monkeypatch.setattr(main_mod, "_execute",
+                        lambda run, system, command, timeout=None: CommandResult("", "no route to host", 1, 5))
+    run = client.post("/api/runs", json={"ticket_id": 7001}).json()
+    assert run["status"] == "escalated"  # all diagnostics failed -> can't report "resolved"
+
+
 def test_tickets_proxy(env):
     client, _ = env
     assert client.get("/api/tickets").status_code == 200

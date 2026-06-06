@@ -194,11 +194,14 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
     while True:
         if is_terminal(run["status"]):  # aborted during analysis
             return
-        diagnostics = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
-        if diagnostics >= DIAGNOSE_HARD_LIMIT:
+        executed = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
+        attempts = sum(1 for s in run["steps"] if s["kind"] == "diagnose")
+        # Bound by TOTAL diagnostic attempts so an unreachable host (every diagnostic
+        # failing, never "executed") still terminates instead of looping forever.
+        if attempts >= DIAGNOSE_HARD_LIMIT:
             _escalate(run, "could not converge on a plan after diagnostics")
             return
-        must_plan = diagnostics >= DIAGNOSE_SOFT_LIMIT
+        must_plan = executed >= DIAGNOSE_SOFT_LIMIT
         action = agent.propose_action(ticket, system, _executed_history(run), memory=mem, must_plan=must_plan)
         kind = action.get("action")
         if kind == "plan":
@@ -206,6 +209,12 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
             audit.add("plan_proposed", root_cause=run["plan"]["root_cause"], steps=len(run["plan"]["steps"]))
             return
         if kind == "finish":
+            executed_any = any(s["kind"] == "diagnose" and s["status"] == "executed" for s in run["steps"])
+            attempted_any = any(s["kind"] == "diagnose" for s in run["steps"])
+            if attempted_any and not executed_any:
+                # Every diagnostic failed (e.g. host unreachable) — can't claim "resolved".
+                _escalate(run, "could not gather any evidence — handing to the technician")
+                return
             _new_step(run, "finish", rationale=action.get("summary", "System already healthy; no change needed."),
                       status="done")
             transition(run, RunStatus.FINISHED)
