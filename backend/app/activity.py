@@ -36,7 +36,12 @@ def draft_activity(ticket: Dict[str, Any], history: List[Dict[str, Any]]) -> Dic
             f"TICKET: {ticket.get('title','')}\n{ticket.get('description','')}\n\nRUN LOG:\n{redact(log)}",
         )
         if out:
-            return {k: redact(str(out.get(k, ""))) or "" for k in _FIELDS}
+            drafted = {k: (redact(str(out.get(k, ""))) or "").strip() for k in _FIELDS}
+            # Only accept a draft that populated the substantive fields; a partial or
+            # empty object falls through to the deterministic draft below rather than
+            # submitting a blank ERP record that merely looks LLM-authored.
+            if drafted["summary"] and drafted["root_cause"]:
+                return drafted
 
     return {
         "summary": f"Worked ticket: {ticket.get('title', '')}.",

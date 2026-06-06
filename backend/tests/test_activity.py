@@ -20,3 +20,16 @@ def test_llm_draft_fields_are_redacted(monkeypatch):
         "commands_summary": "c", "validation_result": "v"})
     draft = activity.draft_activity({"title": "X"}, [])
     assert "[REDACTED]" in draft["root_cause"] and "hunter2" not in draft["root_cause"]
+
+
+def test_partial_llm_draft_falls_back_to_deterministic(monkeypatch):
+    # A sparse LLM object (missing the substantive fields) must not submit a blank ERP
+    # record — it falls through to the deterministic draft.
+    monkeypatch.setattr(activity.llm, "available", lambda: True)
+    monkeypatch.setattr(activity.llm, "complete_json", lambda *a, **k: {"summary": "did stuff"})
+    draft = activity.draft_activity(
+        {"title": "Disk full"},
+        [{"command": "df -h", "stdout": "/dev/sda1 100% /", "exit_code": 0}],
+    )
+    assert draft["root_cause"]  # deterministic placeholder, not an empty string
+    assert "df -h" in draft["commands_summary"]

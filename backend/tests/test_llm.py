@@ -1,4 +1,5 @@
 """Spec for the LLM wrapper — JSON parsing + graceful failure (no network)."""
+import sys
 import types
 
 from app import llm
@@ -79,3 +80,63 @@ def test_returns_none_without_credentials(monkeypatch):
     monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "")
     monkeypatch.setattr(settings, "AZURE_OPENAI_DEPLOYMENT", "")
     assert llm.complete_json("sys", "usr") is None
+
+
+def test_tolerates_single_line_fenced_json():
+    # A single-line code fence (```{...}```) must still parse — regression guard for
+    # the _loads rewrite, which previously reduced this form to an empty string.
+    model = _model(lambda messages: _resp(content='```{"action":"diagnose","command":"ss -tlnp"}```'))
+    out = llm.complete_json("sys", "usr", model=model)
+    assert out["action"] == "diagnose"
+    assert out["command"] == "ss -tlnp"
+
+
+def _fake_chat_openai(record):
+    """A stand-in langchain_openai module whose ChatOpenAI records its kwargs."""
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            record(kwargs)
+
+        def bind(self, **_kwargs):
+            return self
+
+    mod = types.ModuleType("langchain_openai")
+    mod.ChatOpenAI = _FakeChatOpenAI
+    return mod
+
+
+def _azure_settings(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "azure-openai")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "https://x")
+    monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "k")
+
+
+def test_azure_model_is_built_without_temperature(monkeypatch):
+    # gpt-5.x / o-series reasoning models reject a non-default temperature with a 400,
+    # and langchain-openai<0.3.28 forwards it verbatim — so the azure path must not
+    # send temperature at all (ADR-0011 regression guard for the CRITICAL bug).
+    captured: dict = {}
+    monkeypatch.setitem(sys.modules, "langchain_openai", _fake_chat_openai(captured.update))
+    _azure_settings(monkeypatch)
+    llm._model_cache.clear()
+
+    llm._build_model("gpt-5.4")
+    assert "temperature" not in captured
+    assert captured["model"] == "gpt-5.4"
+    llm._model_cache.clear()
+
+
+def test_build_model_caches_per_model(monkeypatch):
+    # The agent builds a model on every step; the client (and its connection pool)
+    # must be reused, not reconstructed each call.
+    calls: list = []
+    monkeypatch.setitem(sys.modules, "langchain_openai",
+                        _fake_chat_openai(lambda kw: calls.append(kw.get("model"))))
+    _azure_settings(monkeypatch)
+    llm._model_cache.clear()
+
+    llm._build_model("gpt-5.4")
+    llm._build_model("gpt-5.4")
+    assert calls == ["gpt-5.4"]  # built once; second call served from cache
+    llm._model_cache.clear()

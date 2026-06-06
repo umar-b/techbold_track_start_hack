@@ -104,7 +104,7 @@ def _unwrap(out: Any) -> Any:
 
 def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
-                   must_plan: bool = False, model: Any = None) -> Dict[str, Any]:
+                   must_plan: bool = False) -> Dict[str, Any]:
     related = ("RELATED PAST INCIDENTS (verify against live evidence, do not assume):\n" + memory) if memory else ""
     closing = (
         "You now have enough evidence. Respond with action=plan — an ordered list of fix steps "
@@ -122,7 +122,7 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
     # All in-loop reasoning — both deciding the next diagnostic and producing the
     # plan — runs on the stronger reasoning model (ADR-0011). The cheap model is
     # reserved for non-reasoning text (the activity-log draft).
-    out = _unwrap(llm.complete_json(_SYSTEM, user, model=model, reasoning=True))
+    out = _unwrap(llm.complete_json(_SYSTEM, user, reasoning=True))
     if isinstance(out, dict) and out.get("action") in _ACTIONS:
         return out
     return _baseline(history)

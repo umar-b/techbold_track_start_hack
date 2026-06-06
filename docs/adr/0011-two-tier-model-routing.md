@@ -1,4 +1,4 @@
-# ADR-0011: Two-tier model routing — fast model for diagnosis, reasoning model for planning
+# ADR-0011: Two-tier model routing — reasoning model for the whole loop, fast model for the activity log
 
 **Date**: 2026-06-06
 **Status**: accepted
@@ -53,7 +53,7 @@ provider/endpoint/key and the same JSON-mode path (ADR-0010).
 
 ### Negative
 - Higher token cost: the reasoning model now fires on every diagnose/plan call (~7–10/run) instead of once. Accepted deliberately for quality; the track warned to use the strong model sparingly, so revisit if quota bites.
-- Two model names to configure; a misconfigured reasoning model silently falls back to the fast one.
+- Two model names to configure. An *unset* `LLM_REASONING_MODEL` cleanly falls back to the fast model (build-time). A *broken* one (bad name, quota, or an unsupported request param) fails the call — `complete_json` logs it at WARNING and the agent degrades to the read-only baseline, **not** the fast model. The WARNING is what distinguishes this from the silent "no provider configured" path.
 
 ### Risks
 - `gpt-5.4` latency/quota across a full run could slow things or hit limits. Mitigation: the diagnose soft-limit caps the number of reasoning calls; existing timeouts apply; lower the soft-limit if convergence is fast enough to need fewer probes.
