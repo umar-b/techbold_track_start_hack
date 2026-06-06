@@ -1,0 +1,19 @@
+{
+  "enabledPlugins": {
+    "ecc@ecc": true
+  },
+  "env": {
+    "ECC_GATEGUARD": "off",
+    "ECC_DISABLED_HOOKS": "pre:bash:dev-server-block,post:edit:typecheck,post:edit:design-quality",
+    "ECC_HOOK_PROFILE": "standard",
+    "ECC_CONTEXT_MONITOR_COST_WARNINGS": "off"
+  },
+  "mcpServers": {
+    "sequential-thinking": {
+      "disabled": true
+    },
+    "memory": {
+      "disabled": true
+    }
+  }
+}
