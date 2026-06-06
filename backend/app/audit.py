@@ -22,6 +22,13 @@ _REDACTIONS = [
     (re.compile(r"(?i)\bauthorization\s*:\s*bearer\s+\S+"), "Authorization: Bearer [REDACTED]"),
     # Credentials embedded in a connection URI: scheme://user:pass@host
     (re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s:/@]+):[^\s:/@]+@"), r"\1:[REDACTED]@"),
+    # Long-form credential flags: --password=secret, --token secret
+    (re.compile(r"(?i)(--(?:password|passwd|pwd|token|secret|api[_-]?key))[=\s]+\S+"),
+     r"\1=[REDACTED]"),
+    # Basic-auth on the CLI: curl -u user:pass
+    (re.compile(r"(?i)(?<![\w-])-u\s+\S+:\S+"), "-u [REDACTED]"),
+    # MySQL-family inline password (scoped to those binaries so it never mangles `tar -p`/`cp -p`)
+    (re.compile(r"(?i)\b(mysql\w*|mariadb)\b([^\n|;&]*?)\s-p(\S+)"), r"\1\2 -p[REDACTED]"),
 ]
 
 

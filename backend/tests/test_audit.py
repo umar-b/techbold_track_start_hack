@@ -24,6 +24,18 @@ def test_redacts_connection_uri_password():
     assert "s3cretpw" not in out and "appuser" in out
 
 
+def test_redacts_flag_style_credentials():
+    assert "topsecret" not in redact("mysql -u root -ptopsecret -e 'SHOW STATUS'")
+    assert "hunter2" not in redact("restic --password hunter2 backup")
+    assert "p@ss" not in redact("curl -u admin:p@ss https://api.example.com")
+
+
+def test_does_not_mangle_innocent_dash_p_flags():
+    # -p on tar/cp must survive (the mysql rule is scoped to mysql-family binaries)
+    assert redact("tar -pxvf archive.tar") == "tar -pxvf archive.tar"
+    assert redact("cp -p a b") == "cp -p a b"
+
+
 def test_non_string_passes_through():
     assert redact(None) is None
     assert redact("") == ""

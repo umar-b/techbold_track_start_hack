@@ -38,6 +38,7 @@ class FakePhoenix:
 @pytest.fixture
 def env(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "AUDIT_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "MEMORY_DIR", str(tmp_path / "memory"))
     # Keep tests hermetic: no real LLM/SSH calls even when .env has live creds.
     monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "")
     monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "")

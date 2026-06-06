@@ -1,0 +1,3 @@
+# This directory holds the markdown-graph Memory (ADR-0001).
+# Notes (*.md) are written here per resolved run; this keeps the dir tracked.
+# Do not add *.md docs here — only note files (the loader globs *.md).

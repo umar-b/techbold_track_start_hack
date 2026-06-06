@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 
 from . import activity as activity_mod
 from . import agent
+from . import memory as memory_mod
 from . import schemas
 from .audit import redact
 from .config import settings
@@ -139,7 +140,7 @@ def _escalate(run, reason: str) -> None:
     store.audit(run["id"]).add("escalated", reason=reason)
 
 
-def _analyze(run, ticket, system) -> None:
+def _analyze(run, ticket, system, mem: str = "") -> None:
     """Analysis phase: run read-only diagnostics, then converge to a Plan (forced after a
     soft limit, escalate at the hard limit). Diagnostics are read-only only; a mutating
     "diagnostic" is rejected — fixes belong in a Plan the technician approves."""
@@ -151,7 +152,7 @@ def _analyze(run, ticket, system) -> None:
             _escalate(run, "could not converge on a plan after diagnostics")
             return
         must_plan = diagnostics >= DIAGNOSE_SOFT_LIMIT
-        action = agent.propose_action(ticket, system, _executed_history(run), must_plan=must_plan)
+        action = agent.propose_action(ticket, system, _executed_history(run), memory=mem, must_plan=must_plan)
         kind = action.get("action")
         if kind == "plan":
             _set_plan(run, action)
@@ -211,7 +212,8 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
 def _replan(run, ticket, system) -> None:
     """After a failed/rejected plan, the agent forms a NEW plan for the technician to approve."""
     transition(run, RunStatus.ANALYZING)
-    action = agent.propose_action(ticket, system, _executed_history(run), must_plan=True)
+    mem = memory_mod.retrieve(ticket, system)
+    action = agent.propose_action(ticket, system, _executed_history(run), memory=mem, must_plan=True)
     if action.get("action") == "plan":
         _set_plan(run, action)
         store.audit(run["id"]).add("replan_proposed", root_cause=run["plan"]["root_cause"],
@@ -251,7 +253,7 @@ def create_app() -> FastAPI:
         store.audit(run["id"]).add("run_started", ticket_id=body.ticket_id,
                                    ticket_title=ticket.get("title", ""))
         _erp(phoenix.set_status, body.ticket_id, "PENDING")
-        _analyze(run, ticket, system)
+        _analyze(run, ticket, system, memory_mod.retrieve(ticket, system))
         _close_if_terminal(run)
         return run
 
@@ -333,7 +335,16 @@ def create_app() -> FastAPI:
         created = _erp(phoenix.create_activity, payload)
         if body.set_done:
             _erp(phoenix.set_status, run["ticket_id"], "DONE")
-        audit.add("activity_submitted", ticket_id=run["ticket_id"])
+        # Append a sanitized memory note (ADR-0001). Must never break the submit.
+        note_path = None
+        try:
+            ticket = phoenix.get_ticket(run["ticket_id"])
+            system = phoenix.customer_system(run["ticket_id"]).get("system", {})
+            note_path = memory_mod.write_note(run, ticket, payload, system)
+        except Exception:  # noqa: BLE001
+            logging.getLogger("api").warning("memory note skipped after submit", exc_info=True)
+            note_path = None
+        audit.add("activity_submitted", ticket_id=run["ticket_id"], memory_note=bool(note_path))
         return {"activity": created, "run": run}
 
     @app.get("/api/runs/{run_id}/events")
