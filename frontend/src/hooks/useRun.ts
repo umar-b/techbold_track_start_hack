@@ -69,7 +69,7 @@ export function useRun(ticketId: number) {
       if (msg.type === "step") {
         setRun((prev) => (prev ? mergeStep(prev, msg.step) : prev));
       } else if (msg.type === "status") {
-        setRun((prev) => (prev ? { ...prev, status: msg.status } : prev));
+        setRun((prev) => (prev ? { ...prev, status: msg.status as Run["status"] } : prev));
         if (TERMINAL.includes(msg.status)) {
           es.close();
           if (esRef.current === es) esRef.current = null;

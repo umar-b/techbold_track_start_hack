@@ -26,13 +26,12 @@ from . import schemas
 from .audit import redact
 from .config import settings
 from .phoenix_client import PhoenixClient, PhoenixError
+from .runstate import RunStatus, is_terminal, transition
 from .runstore import store
 from .safety import RiskTier, check_command
-from .ssh_runner import SSHError, SSHRunner
+from .ssh_runner import SSHError
 
 logging.basicConfig(level=logging.INFO)
-
-_TERMINAL = {"finished", "aborted", "escalated"}
 
 # Analysis converges to a plan: force a plan after the soft limit, escalate at the hard limit.
 DIAGNOSE_SOFT_LIMIT = 6
@@ -56,45 +55,30 @@ def _erp(fn, *args, **kwargs):
         raise HTTPException(status_code=502, detail=f"ERP error: {exc}")
 
 
-# --- SSH execution: one reused connection per run (overridable in tests) --- #
-# Opening a fresh connection per command causes SSH banner-timeout churn; reuse one
-# connection per run and reconnect once if it dropped (also covers an approval wait).
-_ssh_cache: Dict[str, SSHRunner] = {}
-
-
-def _ssh_for(run: Dict[str, Any], system: Dict[str, Any]) -> SSHRunner:
-    runner = _ssh_cache.get(run["id"])
-    if runner is not None and runner._client is not None:
-        return runner
-    runner = SSHRunner(host=system.get("ip", ""), port=int(system.get("port") or 22),
-                       username=system.get("username"), ticket_id=run["ticket_id"])
-    last: Optional[Exception] = None
-    for _ in range(2):  # tolerate a transient banner timeout on connect
-        try:
-            runner.__enter__()
-            _ssh_cache[run["id"]] = runner
-            return runner
-        except SSHError as exc:
-            last = exc
-    raise last  # type: ignore[misc]
-
-
-def _close_ssh(run_id: str) -> None:
-    runner = _ssh_cache.pop(run_id, None)
-    if runner is not None:
-        try:
-            runner.__exit__()
-        except Exception:  # noqa: BLE001
-            pass
-
-
+# --- SSH execution: the run's reused connection lives in the store (overridable in tests) --- #
 def _execute(run: Dict[str, Any], system: Dict[str, Any], command: str, timeout=None):
-    """Run a command on the run's reused SSH connection; reconnect once if it dropped."""
+    """Run a command on the run's reused SSH connection; reconnect once if it dropped.
+
+    Reusing one connection per run avoids the banner-timeout churn of opening a
+    fresh connection per command; the session is owned by the store and survives
+    an approval wait. Connection lifecycle (connect-retry, liveness) lives in the
+    SSHRunner; this only adds reconnect-once on a dropped channel.
+    """
     try:
-        return _ssh_for(run, system).run(command, timeout=timeout)
+        return store.session(run, system).run(command, timeout=timeout)
     except SSHError:
-        _close_ssh(run["id"])
-        return _ssh_for(run, system).run(command, timeout=timeout)
+        store.close_session(run["id"])
+        return store.session(run, system).run(command, timeout=timeout)
+
+
+def _close_if_terminal(run: Dict[str, Any]) -> None:
+    """Close the run's SSH session once it reaches a terminal status.
+
+    The single cleanup site (replacing four scattered ones); called at the route
+    boundary after a handler may have driven the run to a terminal state.
+    """
+    if is_terminal(run["status"]):
+        store.close_session(run["id"])
 
 
 # --- run helpers ----------------------------------------------------------- #
@@ -146,14 +130,13 @@ def _set_plan(run, action) -> None:
         st["risk"] = check_command(st.get("command", "")).tier.value
     run["plan"] = {"root_cause": action.get("root_cause", ""), "steps": steps,
                    "validation": action.get("validation", []) or []}
-    run["status"] = "awaiting_plan_approval"
+    transition(run, RunStatus.AWAITING_PLAN_APPROVAL)
 
 
 def _escalate(run, reason: str) -> None:
     _new_step(run, "finish", rationale=f"Escalated to technician: {reason}", status="done")
-    run["status"] = "escalated"
+    transition(run, RunStatus.ESCALATED)
     store.audit(run["id"]).add("escalated", reason=reason)
-    _close_ssh(run["id"])
 
 
 def _analyze(run, ticket, system) -> None:
@@ -161,7 +144,7 @@ def _analyze(run, ticket, system) -> None:
     soft limit, escalate at the hard limit). Diagnostics are read-only only; a mutating
     "diagnostic" is rejected — fixes belong in a Plan the technician approves."""
     audit = store.audit(run["id"])
-    run["status"] = "analyzing"
+    transition(run, RunStatus.ANALYZING)
     while True:
         diagnostics = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
         if diagnostics >= DIAGNOSE_HARD_LIMIT:
@@ -177,9 +160,8 @@ def _analyze(run, ticket, system) -> None:
         if kind == "finish":
             _new_step(run, "finish", rationale=action.get("summary", "System already healthy; no change needed."),
                       status="done")
-            run["status"] = "finished"
+            transition(run, RunStatus.FINISHED)
             audit.add("agent_reports_resolved", summary=action.get("summary", ""))
-            _close_ssh(run["id"])
             return
         # diagnose — read-only only
         cmd = action.get("command", "")
@@ -204,14 +186,14 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
     plan = run["plan"] or {}
     steps = edited_steps if edited_steps is not None else plan.get("steps", [])
     validation = plan.get("validation", []) or []
-    run["status"] = "executing"
+    transition(run, RunStatus.EXECUTING)
     audit.add("plan_approved", steps=len(steps))
     fixes_ok = True
     for st in steps:
         step = _new_step(run, "fix", st.get("command", ""), st.get("rationale", ""),
                          expected=st.get("expected", ""))
         fixes_ok = _run_command(run, system, step, audit) and fixes_ok
-    run["status"] = "verifying"
+    transition(run, RunStatus.VERIFYING)
     validation_ok = True
     for vc in validation:
         step = _new_step(run, "validate", vc, "Validate the fix")
@@ -219,9 +201,8 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
     run["plan"] = None
     verdict = validation_ok if validation else fixes_ok
     if verdict:
-        run["status"] = "finished"
+        transition(run, RunStatus.FINISHED)
         audit.add("verified_resolved")
-        _close_ssh(run["id"])
     else:
         audit.add("verification_failed")
         _replan(run, ticket, system)
@@ -229,7 +210,7 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
 
 def _replan(run, ticket, system) -> None:
     """After a failed/rejected plan, the agent forms a NEW plan for the technician to approve."""
-    run["status"] = "analyzing"
+    transition(run, RunStatus.ANALYZING)
     action = agent.propose_action(ticket, system, _executed_history(run), must_plan=True)
     if action.get("action") == "plan":
         _set_plan(run, action)
@@ -271,6 +252,7 @@ def create_app() -> FastAPI:
                                    ticket_title=ticket.get("title", ""))
         _erp(phoenix.set_status, body.ticket_id, "PENDING")
         _analyze(run, ticket, system)
+        _close_if_terminal(run)
         return run
 
     @app.get("/api/runs/{run_id}")
@@ -292,6 +274,7 @@ def create_app() -> FastAPI:
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
         steps = [s.model_dump() for s in body.steps] if body.steps is not None else None
         _execute_and_verify(run, ticket, system, edited_steps=steps)
+        _close_if_terminal(run)
         return run
 
     @app.post("/api/runs/{run_id}/reject")
@@ -299,11 +282,14 @@ def create_app() -> FastAPI:
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
+        if run["status"] != "awaiting_plan_approval":
+            raise HTTPException(409, f"Nothing to reject (status={run['status']})")
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
         run["plan"] = None
         store.audit(run_id).add("plan_rejected")
         _replan(run, ticket, system)
+        _close_if_terminal(run)
         return run
 
     @app.post("/api/runs/{run_id}/abort")
@@ -311,9 +297,10 @@ def create_app() -> FastAPI:
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
-        run["status"] = "aborted"
-        store.audit(run_id).add("run_aborted")
-        _close_ssh(run_id)
+        if not is_terminal(run["status"]):
+            transition(run, RunStatus.ABORTED)
+            store.audit(run_id).add("run_aborted")
+        _close_if_terminal(run)
         return run
 
     @app.get("/api/runs/{run_id}/activity-draft")
@@ -362,7 +349,7 @@ def create_app() -> FastAPI:
                     yield f"data: {json.dumps({'type': 'step', 'step': steps[last]})}\n\n"
                     last += 1
                 yield f"data: {json.dumps({'type': 'status', 'status': run['status']})}\n\n"
-                if run["status"] in _TERMINAL:
+                if is_terminal(run["status"]):
                     break
                 time.sleep(0.5)
         return StreamingResponse(gen(), media_type="text/event-stream")

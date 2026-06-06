@@ -1,6 +1,24 @@
 export type TicketStatus = "OPEN" | "PENDING" | "DONE";
 export type Risk = "SAFE" | "GATED" | "BLOCKED" | null;
 
+export type RunStatus =
+  | "created"
+  | "analyzing"
+  | "awaiting_plan_approval"
+  | "executing"
+  | "verifying"
+  | "finished"
+  | "escalated"
+  | "aborted";
+
+export type StepStatus =
+  | "proposed"
+  | "executed"
+  | "failed"
+  | "blocked"
+  | "rejected"
+  | "done";
+
 export interface Ticket {
   id: number;
   title: string;
@@ -40,7 +58,7 @@ export interface Step {
   rationale: string;
   risk: Risk;
   expected: string;
-  status: string;
+  status: StepStatus;
   result: StepResult | null;
   safety_reason: string;
 }
@@ -61,7 +79,7 @@ export interface Plan {
 export interface Run {
   id: string;
   ticket_id: number;
-  status: string;
+  status: RunStatus;
   steps: Step[];
   plan: Plan | null;
   created_at: string;

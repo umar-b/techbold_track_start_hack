@@ -118,6 +118,14 @@ def test_get_unknown_run_404(env):
     assert client.get("/api/runs/nope").status_code == 404
 
 
+def test_reject_on_non_awaiting_returns_409(env, monkeypatch):
+    client, _ = env
+    _script(monkeypatch, [{"action": "finish", "summary": "already healthy"}])
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+    # the run finished during analysis — there is nothing to reject
+    assert client.post(f"/api/runs/{rid}/reject", json={}).status_code == 409
+
+
 def test_tickets_proxy(env):
     client, _ = env
     assert client.get("/api/tickets").status_code == 200

@@ -61,6 +61,30 @@ class SSHRunner:
         self.key_path = key_path or resolve_key_path(ticket_id)
         self._client: Optional[paramiko.SSHClient] = None
 
+    @property
+    def is_connected(self) -> bool:
+        """True only if the channel is live — probes the transport, not just the handle."""
+        if self._client is None:
+            return False
+        transport = self._client.get_transport()
+        return transport is not None and transport.is_active()
+
+    def ensure_connected(self, attempts: int = 2) -> "SSHRunner":
+        """Connect if not already, tolerating a transient banner timeout.
+
+        Holds the connect-retry policy that used to live in the route layer, so
+        callers ask for a live runner without inspecting internals.
+        """
+        if self.is_connected:
+            return self
+        last: Optional[Exception] = None
+        for _ in range(max(1, attempts)):
+            try:
+                return self.__enter__()
+            except SSHError as exc:
+                last = exc
+        raise last  # type: ignore[misc]
+
     def __enter__(self) -> "SSHRunner":
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())

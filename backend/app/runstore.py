@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from .audit import AuditLog
 from .config import settings
+from .ssh_runner import SSHRunner  # one-way dependency: ssh_runner must not import runstore
 
 
 def _now_iso() -> str:
@@ -21,6 +22,11 @@ class RunStore:
     def __init__(self) -> None:
         self._runs: Dict[str, Dict[str, Any]] = {}
         self._audits: Dict[str, AuditLog] = {}
+        # One reused SSH connection per run, owned here (run-control state, ADR-0008)
+        # rather than as ambient module-global state in the route layer.
+        # TODO: no idle-timeout eviction — a run parked at awaiting_plan_approval the
+        # technician never resolves keeps its TCP connection until the process exits.
+        self._sessions: Dict[str, SSHRunner] = {}
 
     def create(self, ticket_id: int) -> Dict[str, Any]:
         run_id = uuid.uuid4().hex[:12]
@@ -44,6 +50,35 @@ class RunStore:
 
     def all(self) -> List[Dict[str, Any]]:
         return list(self._runs.values())
+
+    def session(self, run: Dict[str, Any], system: Dict[str, Any]) -> SSHRunner:
+        """The run's live SSH connection, created+connected on first use and reused.
+
+        The connection deliberately survives between requests (e.g. the wait
+        between starting a run and approving its plan), so it is keyed by run id
+        rather than scoped to a single request.
+        """
+        sess = self._sessions.get(run["id"])
+        if sess is None:
+            sess = SSHRunner(
+                host=system.get("ip", ""),
+                port=int(system.get("port") or 22),
+                username=system.get("username"),
+                ticket_id=run["ticket_id"],
+            )
+            sess.ensure_connected()  # connect before storing, so a failed connect leaves nothing cached
+            self._sessions[run["id"]] = sess
+        else:
+            sess.ensure_connected()  # reconnect if the connection dropped during an approval wait
+        return sess
+
+    def close_session(self, run_id: str) -> None:
+        sess = self._sessions.pop(run_id, None)
+        if sess is not None:
+            try:
+                sess.__exit__(None, None, None)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 store = RunStore()
