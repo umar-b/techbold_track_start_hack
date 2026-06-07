@@ -146,7 +146,9 @@ def create_app() -> FastAPI:
             raise HTTPException(409, f"Nothing to reject (status={run['status']})")
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
-        feedback = (body.feedback or "").strip()
+        # Cap length before it reaches the LLM prompt — bounds the prompt-injection
+        # surface from this free-text field (the safety layer re-checks every command).
+        feedback = (body.feedback or "").strip()[:1000]
         store.audit(run_id).add("plan_rejected", feedback=feedback)
         transition(run, RunStatus.ANALYZING)
         run["plan"] = None

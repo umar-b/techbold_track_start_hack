@@ -128,7 +128,8 @@ export const api = {
     MOCK_MODE ? mockApi.getTicket(id) : request(`/api/tickets/${id}`),
   startRun: (ticketId: number): Promise<Run> =>
     request(`/api/runs`, { method: "POST", body: JSON.stringify({ ticket_id: ticketId }) }),
-  listRuns: (): Promise<RunSummary[]> => request(`/api/runs`),
+  listRuns: (): Promise<RunSummary[]> =>
+    MOCK_MODE ? Promise.resolve([]) : request(`/api/runs`),
   getRun: (id: string): Promise<Run> => request(`/api/runs/${id}`),
   approve: (id: string, steps?: PlanStepEdit[]): Promise<Run> =>
     request(`/api/runs/${id}/approve`, {

@@ -35,7 +35,10 @@ export function useRun(ticketId: number) {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
 
   const mounted = useRef(true);
-  const startedRef = useRef(false); // fire the start POST once, even under StrictMode double-mount
+  // Remembers which ticket we've already started/resumed for. Keying on the id
+  // (not a bare boolean) fires once per StrictMode double-mount AND re-fires if
+  // the same mounted component is handed a different ticketId.
+  const startedForRef = useRef<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   // Start or RESUME the run once. If this ticket already has a live run (the
@@ -45,8 +48,10 @@ export function useRun(ticketId: number) {
   // (awaiting_plan_approval) or terminated.
   useEffect(() => {
     mounted.current = true;
-    if (!startedRef.current) {
-      startedRef.current = true;
+    if (startedForRef.current !== ticketId) {
+      startedForRef.current = ticketId;
+      setRun(null);       // a new ticket: drop any stale run before (re)loading
+      setError("");
       setStarting(true);
       api
         .listRuns()
