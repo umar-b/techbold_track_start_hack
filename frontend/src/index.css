@@ -1015,6 +1015,36 @@ p { margin: 0; }
   width: auto;
 }
 
+/* Live-stream connection indicator */
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.conn-dot--live { background: var(--safe); animation: conn-pulse 2s ease-in-out infinite; }
+.conn-dot--connecting,
+.conn-dot--reconnecting { background: var(--gold); animation: conn-pulse 1s ease-in-out infinite; }
+.conn-dot--closed { background: var(--muted); }
+
+@keyframes conn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conn-dot { animation: none !important; }
+}
+
 /* Done bar */
 .chat-done-bar {
   display: flex;

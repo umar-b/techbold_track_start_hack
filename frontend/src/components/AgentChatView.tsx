@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert } from "lucide-react";
 import type { CustomerSystem, PlanStep, PlanStepEdit, Step, Ticket } from "../types";
 import { useRun } from "../hooks/useRun";
+import type { ConnectionState } from "../hooks/useRun";
 import { RiskBadge } from "./RiskBadge";
 import { CopyButton } from "./CopyButton";
 import { formatDuration } from "../lib/format";
@@ -16,7 +17,7 @@ type Props = {
 
 export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
   const sys = system.system;
-  const { run, steps, status, plan, error, starting, acting, isAwaitingPlan, isTerminal, approve, reject, abort } =
+  const { run, steps, status, plan, error, starting, acting, connection, isAwaitingPlan, isTerminal, approve, reject, abort } =
     useRun(ticket.id);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -98,6 +99,7 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
           </div>
         ) : (
           <div className="chat-input-bar">
+            {!isTerminal && <ConnectionDot state={connection} />}
             <span className="chat-stage-label">
               {starting ? "Starting run…" : status.replace(/_/g, " ")}
             </span>
@@ -332,6 +334,22 @@ function PlanApproval({
         </div>
       </div>
     </div>
+  );
+}
+
+const CONNECTION_LABEL: Record<ConnectionState, string> = {
+  connecting: "Connecting to live stream…",
+  live: "Live",
+  reconnecting: "Reconnecting…",
+  closed: "Stream closed",
+};
+
+function ConnectionDot({ state }: { state: ConnectionState }) {
+  return (
+    <span className="conn" title={CONNECTION_LABEL[state]} aria-label={CONNECTION_LABEL[state]} role="status">
+      <span className={`conn-dot conn-dot--${state}`} />
+      <span className="conn-text">{state === "live" ? "Live" : CONNECTION_LABEL[state]}</span>
+    </span>
   );
 }
 

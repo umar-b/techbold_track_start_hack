@@ -4,6 +4,9 @@ import { api, getErrorMessage, BASE } from "../api";
 
 const TERMINAL = ["finished", "aborted", "escalated"];
 
+/** Health of the live event stream, surfaced to the UI as a status dot. */
+export type ConnectionState = "connecting" | "live" | "reconnecting" | "closed";
+
 type SseMessage =
   | { type: "step"; step: Step }
   | { type: "status"; status: string }
@@ -28,6 +31,7 @@ export function useRun(ticketId: number) {
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(true);
   const [acting, setActing] = useState(false);
+  const [connection, setConnection] = useState<ConnectionState>("connecting");
 
   const mounted = useRef(true);
   const startedRef = useRef(false); // fire the start POST once, even under StrictMode double-mount
@@ -59,6 +63,14 @@ export function useRun(ticketId: number) {
     if (run && TERMINAL.includes(run.status)) return;
     const es = new EventSource(`${BASE}/api/runs/${runId}/events`);
     esRef.current = es;
+    setConnection("connecting");
+    es.onopen = () => { if (mounted.current) setConnection("live"); };
+    // The browser auto-reconnects on a transient drop (readyState CONNECTING);
+    // a CLOSED state means it gave up. Reflect both rather than killing the stream.
+    es.onerror = () => {
+      if (!mounted.current) return;
+      setConnection(es.readyState === EventSource.CLOSED ? "closed" : "reconnecting");
+    };
     es.onmessage = (ev: MessageEvent<string>) => {
       if (!mounted.current) return;
       let msg: SseMessage;
@@ -76,6 +88,7 @@ export function useRun(ticketId: number) {
         setRun((prev) => (prev ? { ...prev, status: msg.status as Run["status"] } : prev));
         if (TERMINAL.includes(msg.status)) {
           es.close();
+          setConnection("closed");
           if (esRef.current === es) esRef.current = null;
         }
       }
@@ -106,6 +119,7 @@ export function useRun(ticketId: number) {
       if (TERMINAL.includes(r.status)) {
         esRef.current?.close();
         esRef.current = null;
+        setConnection("closed");
       }
     } catch (e) {
       if (mounted.current) setError(getErrorMessage(e));
@@ -134,6 +148,7 @@ export function useRun(ticketId: number) {
     error,
     starting,
     acting,
+    connection,
     isAwaitingPlan: run?.status === "awaiting_plan_approval",
     isTerminal: !!run && TERMINAL.includes(run.status),
     approve,
