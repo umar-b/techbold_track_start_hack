@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main as main_mod
+from app import orchestrator as orch_mod
 from app.config import settings
 from app.main import create_app, get_phoenix
 from app.ssh_runner import CommandResult
@@ -42,11 +43,11 @@ def env(monkeypatch, tmp_path):
     # Keep tests hermetic: no real LLM/SSH calls even when .env has live creds.
     monkeypatch.setattr(settings, "AZURE_OPENAI_API_KEY", "")
     monkeypatch.setattr(settings, "AZURE_OPENAI_ENDPOINT", "")
-    monkeypatch.setattr(main_mod, "_execute",
+    monkeypatch.setattr(orch_mod, "_execute",
                         lambda run, system, command, timeout=None: CommandResult("ok", "", 0, 5))
     # Run the background run-loop inline (with the same guard/cleanup) so assertions
     # made right after a POST see the converged state.
-    monkeypatch.setattr(main_mod, "_submit", lambda fn, *a: main_mod._guarded(fn, *a))
+    monkeypatch.setattr(orch_mod, "_submit", lambda fn, *a: orch_mod._guarded(fn, *a))
     # The store is a module singleton — isolate each test.
     main_mod.store._runs.clear()
     main_mod.store._audits.clear()
@@ -62,7 +63,7 @@ def env(monkeypatch, tmp_path):
 
 def _script(monkeypatch, actions):
     it = iter(actions)
-    monkeypatch.setattr(main_mod.agent, "propose_action", lambda *a, **k: next(it))
+    monkeypatch.setattr(orch_mod.agent, "propose_action", lambda *a, **k: next(it))
 
 
 def test_full_run_diagnose_plan_approve_finish(env, monkeypatch):
@@ -138,7 +139,7 @@ def test_reject_on_non_awaiting_returns_409(env, monkeypatch):
 def test_start_run_returns_immediately_before_analysis(env, monkeypatch):
     client, _ = env
     # Defer the background loop: the POST must return at once, before diagnostics run.
-    monkeypatch.setattr(main_mod, "_submit", lambda fn, *a: None)
+    monkeypatch.setattr(orch_mod, "_submit", lambda fn, *a: None)
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
     assert run["status"] == "analyzing"
     assert run["steps"] == [] and run["plan"] is None
@@ -149,13 +150,13 @@ def test_set_plan_keeps_no_plan_when_run_already_aborted():
     from app.runstate import IllegalTransition
     run = {"id": "x", "ticket_id": 7001, "status": "aborted", "steps": [], "plan": None}
     with pytest.raises(IllegalTransition):
-        main_mod._set_plan(run, {"root_cause": "c", "steps": [], "validation": []})
+        orch_mod._set_plan(run, {"root_cause": "c", "steps": [], "validation": []})
     assert run["plan"] is None
 
 
 def test_second_concurrent_run_for_ticket_is_rejected(env, monkeypatch):
     client, _ = env
-    monkeypatch.setattr(main_mod, "_submit", lambda fn, *a: None)  # leave the first run active
+    monkeypatch.setattr(orch_mod, "_submit", lambda fn, *a: None)  # leave the first run active
     assert client.post("/api/runs", json={"ticket_id": 7001}).status_code == 200
     assert client.post("/api/runs", json={"ticket_id": 7001}).status_code == 409
 
@@ -163,19 +164,19 @@ def test_second_concurrent_run_for_ticket_is_rejected(env, monkeypatch):
 def test_unreachable_host_escalates_instead_of_looping(env, monkeypatch):
     client, _ = env
     # Every diagnostic fails (host unreachable) and the agent only ever wants to probe.
-    monkeypatch.setattr(main_mod.agent, "propose_action",
+    monkeypatch.setattr(orch_mod.agent, "propose_action",
                         lambda *a, **k: {"action": "diagnose", "command": "systemctl status x", "rationale": "probe"})
-    monkeypatch.setattr(main_mod, "_execute",
+    monkeypatch.setattr(orch_mod, "_execute",
                         lambda run, system, command, timeout=None: CommandResult("", "unreachable", 1, 5))
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
     assert run["status"] == "escalated"
-    assert len([s for s in run["steps"] if s["kind"] == "diagnose"]) >= main_mod.DIAGNOSE_HARD_LIMIT
+    assert len([s for s in run["steps"] if s["kind"] == "diagnose"]) >= orch_mod.DIAGNOSE_HARD_LIMIT
 
 
 def test_approve_with_edited_steps_runs_the_edited_command(env, monkeypatch):
     client, _ = env
     ran = []
-    monkeypatch.setattr(main_mod, "_execute",
+    monkeypatch.setattr(orch_mod, "_execute",
                         lambda run, system, command, timeout=None: (ran.append(command), CommandResult("ok", "", 0, 5))[1])
     _script(monkeypatch, [
         {"action": "plan", "root_cause": "x",
@@ -195,8 +196,8 @@ def test_finish_with_no_successful_evidence_escalates(env, monkeypatch):
         {"action": "diagnose", "command": "systemctl status x", "rationale": "probe"},
         {"action": "finish", "summary": "looks fine"},
     ])
-    monkeypatch.setattr(main_mod.agent, "propose_action", lambda *a, **k: next(actions))
-    monkeypatch.setattr(main_mod, "_execute",
+    monkeypatch.setattr(orch_mod.agent, "propose_action", lambda *a, **k: next(actions))
+    monkeypatch.setattr(orch_mod, "_execute",
                         lambda run, system, command, timeout=None: CommandResult("", "no route to host", 1, 5))
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
     assert run["status"] == "escalated"  # all diagnostics failed -> can't report "resolved"
@@ -215,13 +216,13 @@ def test_repeated_gated_diagnostic_does_not_loop(env, monkeypatch):
         return {"action": "diagnose", "command": "sudo /opt/hackathon/public-test.sh",
                 "rationale": "validate first"}
 
-    monkeypatch.setattr(main_mod.agent, "propose_action", fake)
+    monkeypatch.setattr(orch_mod.agent, "propose_action", fake)
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
 
     assert run["status"] == "escalated"
     diagnoses = [s for s in run["steps"] if s["kind"] == "diagnose"]
     # Converges fast — bounded by REJECTED_DIAGNOSE_LIMIT (+1), well under the hard limit of 10.
-    assert len(diagnoses) <= main_mod.REJECTED_DIAGNOSE_LIMIT + 1
+    assert len(diagnoses) <= orch_mod.REJECTED_DIAGNOSE_LIMIT + 1
     assert diagnoses and all(s["status"] == "rejected" for s in diagnoses)
     # The agent was told about its earlier rejected attempts (so a real LLM could self-correct).
     assert max(seen_rejected) >= 1
@@ -236,8 +237,8 @@ def test_ssh_transport_failure_escalates_without_looping(env, monkeypatch):
     def boom(run, system, command, timeout=None):
         raise SSHError("SSH key not found (looked for ''). Set SSH_PRIVATE_KEY_PATH ...")
 
-    monkeypatch.setattr(main_mod, "_execute", boom)
-    monkeypatch.setattr(main_mod.agent, "propose_action",
+    monkeypatch.setattr(orch_mod, "_execute", boom)
+    monkeypatch.setattr(orch_mod.agent, "propose_action",
                         lambda *a, **k: {"action": "diagnose", "command": "systemctl status x",
                                          "rationale": "probe"})
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
