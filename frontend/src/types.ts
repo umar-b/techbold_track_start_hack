@@ -93,6 +93,12 @@ export interface Run {
   created_at: string;
 }
 
+export interface Me {
+  firstname?: string;
+  lastname?: string;
+  teamname?: string;
+}
+
 export interface AuditEntry {
   ts: string;
   event: string;

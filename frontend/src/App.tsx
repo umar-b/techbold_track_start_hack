@@ -6,6 +6,7 @@ import { TicketDetail } from "./components/TicketDetail";
 import { ActivityReview } from "./components/ActivityReview";
 import { AgentChatView } from "./components/AgentChatView";
 import { Toaster } from "./components/Toaster";
+import { HeaderIdentity } from "./components/HeaderIdentity";
 
 type ViewName = "list" | "detail" | "chat" | "activity";
 type View =
@@ -64,6 +65,7 @@ export default function App() {
           <span className="brand-dot">·</span>
           <span className="brand-product">Service Desk Autopilot</span>
         </div>
+        <HeaderIdentity />
       </header>
 
       <AnimatePresence mode="wait" custom={dir}>

@@ -1,4 +1,4 @@
-import type { ActivityDraft, AuditEntry, CustomerSystem, PlanStepEdit, Run, Ticket } from "./types";
+import type { ActivityDraft, AuditEntry, CustomerSystem, Me, PlanStepEdit, Run, Ticket } from "./types";
 
 export const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
@@ -119,6 +119,9 @@ const mockApi = {
 const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === "true";
 
 export const api = {
+  me: (): Promise<Me> =>
+    MOCK_MODE ? Promise.resolve({ firstname: "Alex", lastname: "Berger", teamname: "Team Extrameile" })
+              : request(`/api/me`),
   listTickets: (sort = "date"): Promise<Ticket[]> =>
     MOCK_MODE ? mockApi.listTickets() : request(`/api/tickets?sort=${encodeURIComponent(sort)}`),
   getTicket: (id: number): Promise<{ ticket: Ticket; system: CustomerSystem }> =>
