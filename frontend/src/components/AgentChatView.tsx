@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert, Clock } from "lucide-react";
+import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert, Clock, ChevronDown, ChevronRight, Send } from "lucide-react";
 import type { CustomerSystem, PlanStep, PlanStepEdit, Step, Ticket } from "../types";
 import { useRun } from "../hooks/useRun";
 import type { ConnectionState } from "../hooks/useRun";
@@ -202,6 +202,7 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
 }
 
 function StepView({ step }: { step: Step }) {
+  const [showOutput, setShowOutput] = useState(false);
   if (step.kind === "finish") {
     return (
       <div className="chat-msg-done">
@@ -219,6 +220,9 @@ function StepView({ step }: { step: Step }) {
   const running = step.status === "proposed";
   const stateClass = blocked || failed ? "cmd-block--rejected" : step.status === "executed" ? "cmd-block--done" : "";
   const duration = formatDuration(step.result?.duration_ms);
+  const stdout = step.result?.stdout ?? "";
+  const stderr = step.result?.stderr ?? "";
+  const hasOutput = !!(stdout || stderr);
 
   return (
     <div className="chat-msg-agent chat-msg-cmd-wrap">
@@ -251,14 +255,32 @@ function StepView({ step }: { step: Step }) {
         {step.safety_reason && (
           <p className="cmd-block-rationale" style={{ color: "var(--danger)" }}>{step.safety_reason}</p>
         )}
-        {step.result?.stdout && (
-          <div className="chat-output" style={{ marginTop: "0.5rem" }}>
-            <pre>{step.result.stdout.slice(0, 1200)}</pre>
-          </div>
-        )}
-        {step.result?.stderr && (
-          <div className="chat-output" style={{ marginTop: "0.4rem" }}>
-            <pre style={{ color: "var(--danger)" }}>{step.result.stderr.slice(0, 400)}</pre>
+        {hasOutput && (
+          <div className="cmd-output-wrap">
+            <button
+              type="button"
+              className="cmd-output-toggle"
+              aria-expanded={showOutput}
+              onClick={() => setShowOutput((o) => !o)}
+            >
+              {showOutput ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+              {showOutput ? "Hide output" : "Show output"}
+              {failed && !showOutput && <span className="cmd-output-flag">error</span>}
+            </button>
+            {showOutput && (
+              <>
+                {stdout && (
+                  <div className="chat-output" style={{ marginTop: "0.4rem" }}>
+                    <pre>{stdout.slice(0, 2000)}</pre>
+                  </div>
+                )}
+                {stderr && (
+                  <div className="chat-output" style={{ marginTop: "0.4rem" }}>
+                    <pre style={{ color: "var(--danger)" }}>{stderr.slice(0, 800)}</pre>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -274,10 +296,12 @@ function PlanApproval({
   validation: string[];
   busy: boolean;
   onApprove: (editedSteps?: PlanStepEdit[]) => void;
-  onReject: () => void;
+  onReject: (feedback?: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [cmds, setCmds] = useState<string[]>(() => steps.map((s) => s.command));
+  const [discussOpen, setDiscussOpen] = useState(false);
+  const [note, setNote] = useState("");
   // Reset edits only when the plan CONTENT changes (a genuine replan) — keyed on
   // content, not array identity, so an SSE reconnect replaying the same plan does
   // not silently discard in-progress edits.
@@ -285,6 +309,8 @@ function PlanApproval({
   useEffect(() => {
     setCmds(steps.map((s) => s.command));
     setEditing(false);
+    setDiscussOpen(false);
+    setNote("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planKey]);
 
@@ -297,82 +323,132 @@ function PlanApproval({
     onApprove(steps.map((s, i) => ({ command: command(i), rationale: s.rationale ?? "", expected: s.expected ?? "" })));
   }
 
+  function handleSendNote() {
+    const text = note.trim();
+    if (text) onReject(text); // replan, steered by the technician's note
+  }
+
   return (
-    <div className="chat-msg-agent chat-msg-cmd-wrap">
+    <div className="chat-msg-agent chat-msg-cmd-wrap" style={{ maxWidth: "100%" }}>
       <div className="chat-avatar chat-avatar--sm">
         <Zap size={11} />
       </div>
-      <div className="cmd-block cmd-block--pending" style={{ width: "100%" }}>
-        <div className="cmd-block-header">
-          <span className="badge badge-gated" style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            <ShieldAlert size={10} />FIX PLAN{dirty ? " · edited" : ""}
+      <div className="plan-card">
+        <div className="plan-head">
+          <span className="badge badge-gated plan-badge">
+            <ShieldAlert size={11} />FIX PLAN{dirty ? " · edited" : ""}
           </span>
+          <span className="plan-title">Proposed fix — your approval required</span>
           <button
             type="button"
-            className="link"
-            style={{ marginLeft: "auto", fontSize: "0.75rem" }}
+            className="link plan-edit-toggle"
             disabled={busy}
             aria-expanded={editing}
             aria-controls="plan-steps"
             onClick={() => setEditing((e) => !e)}
           >
-            {editing ? "Done editing" : "Edit"}
+            {editing ? "Done editing" : "Edit commands"}
           </button>
         </div>
-        <p className="cmd-block-rationale" style={{ marginTop: 0 }}>
-          <strong style={{ color: "var(--navy, #1e293b)" }}>Root cause:</strong> {rootCause}
-        </p>
-        <ol id="plan-steps" style={{ margin: "0.6rem 0 0", paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+
+        <div className="plan-rootcause">
+          <span className="plan-rootcause-label">Root cause</span>
+          <p>{rootCause || "—"}</p>
+        </div>
+
+        <ol id="plan-steps" className="plan-steps2">
           {steps.map((st, i) => (
-            <li key={i} style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-              {command(i) !== st.command ? (
-                <span className="badge badge-none">edited · risk re-checked on run</span>
-              ) : (
-                <RiskBadge risk={st.risk ?? null} />
-              )}
-              {editing ? (
-                <textarea
-                  className="plan-edit"
-                  value={command(i)}
-                  rows={2}
-                  spellCheck={false}
-                  aria-label={`Edit command ${i + 1}`}
-                  onChange={(e) => setCmds((prev) => {
-                    const next = steps.map((s, j) => prev[j] ?? s.command);
-                    next[i] = e.target.value;
-                    return next;
-                  })}
-                  style={{
-                    fontFamily: "var(--mono)", fontSize: "0.8125rem", width: "100%", resize: "vertical",
-                    padding: "0.4rem 0.5rem", borderRadius: "4px", border: "1px solid var(--warn, #d97706)",
-                  }}
-                />
-              ) : (
-                <code className="cmd-block-code">{command(i)}</code>
-              )}
-              {st.expected && <span className="expected">Expected: {st.expected}</span>}
+            <li key={i} className="plan-step">
+              <span className="plan-step-num">{i + 1}</span>
+              <div className="plan-step-body">
+                <div className="plan-step-meta">
+                  {command(i) !== st.command ? (
+                    <span className="badge badge-none">edited · risk re-checked on run</span>
+                  ) : (
+                    <RiskBadge risk={st.risk ?? null} />
+                  )}
+                </div>
+                {editing ? (
+                  <textarea
+                    className="plan-edit"
+                    value={command(i)}
+                    rows={2}
+                    spellCheck={false}
+                    aria-label={`Edit command ${i + 1}`}
+                    onChange={(e) => setCmds((prev) => {
+                      const next = steps.map((s, j) => prev[j] ?? s.command);
+                      next[i] = e.target.value;
+                      return next;
+                    })}
+                  />
+                ) : (
+                  <code className="cmd-block-code">{command(i)}</code>
+                )}
+                {st.expected && <span className="expected">Expected: {st.expected}</span>}
+              </div>
             </li>
           ))}
         </ol>
+
         {validation.length > 0 && (
-          <p className="cmd-block-rationale">Validation: {validation.join("; ")}</p>
+          <div className="plan-validation">
+            <span className="plan-validation-label">Validation</span>
+            <ul>
+              {validation.map((v, i) => <li key={i}><code>{v}</code></li>)}
+            </ul>
+          </div>
         )}
+
         {dirty && (
-          <p className="cmd-block-rationale" style={{ color: "var(--warn, #d97706)" }}>
-            Edited commands are still safety-checked before they run.
-          </p>
+          <p className="plan-note">Edited commands are still safety-checked before they run.</p>
         )}
-        <div className="cmd-block-actions">
+
+        <div className="plan-discuss">
+          <button
+            type="button"
+            className="plan-discuss-toggle"
+            aria-expanded={discussOpen}
+            disabled={busy}
+            onClick={() => setDiscussOpen((o) => !o)}
+          >
+            {discussOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            Discuss / request changes
+          </button>
+          {discussOpen && (
+            <div className="plan-discuss-area">
+              <textarea
+                className="plan-discuss-input"
+                rows={2}
+                placeholder="e.g. Reload instead of restart, and check the config first…"
+                aria-label="Ask the agent to adjust the plan"
+                value={note}
+                disabled={busy}
+                onChange={(e) => setNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSendNote(); }
+                }}
+              />
+              <div className="plan-discuss-foot">
+                <span className="muted" style={{ fontSize: "0.72rem" }}>The agent revises the plan with your notes (⌘/Ctrl+↵).</span>
+                <button type="button" className="btn btn-ghost plan-send" disabled={busy || !note.trim()} onClick={handleSendNote}>
+                  <Send size={12} /> Send &amp; revise
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="cmd-block-actions plan-actions">
           <button type="button" className="btn btn-gold cmd-approve-btn" data-shortcut="approve"
                   aria-label={dirty ? "Approve the edited fix plan" : "Approve the proposed fix plan"}
                   disabled={busy || hasEmpty} onClick={handleApprove}>
             {busy ? "Running…" : dirty ? "Approve edited plan" : "Approve plan"}
           </button>
           <button type="button" className="btn btn-danger" data-shortcut="reject"
-                  aria-label="Reject the plan and replan" disabled={busy} onClick={onReject}>
+                  aria-label="Reject the plan and replan" disabled={busy} onClick={() => onReject()}>
             Reject — replan
           </button>
-          {!editing && (
+          {!editing && !discussOpen && (
             <span className="kbd-hint">
               <kbd>A</kbd> approve · <kbd>R</kbd> reject
             </span>

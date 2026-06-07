@@ -141,8 +141,11 @@ export function useRun(ticketId: number) {
       editedSteps?.length ? "Edited plan approved — applying the fix" : "Plan approved — applying the fix");
   }, [run, action]);
 
-  const reject = useCallback(() => {
-    if (run) void action(() => api.reject(run.id), "Plan rejected — the agent is replanning");
+  const reject = useCallback((feedback?: string) => {
+    if (run) void action(() => api.reject(run.id, feedback),
+      feedback && feedback.trim()
+        ? "Sent to the agent — revising the plan with your notes"
+        : "Plan rejected — the agent is replanning");
   }, [run, action]);
 
   const abort = useCallback(() => {

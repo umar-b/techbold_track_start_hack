@@ -134,8 +134,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(steps && steps.length ? { steps } : {}),
     }),
-  reject: (id: string): Promise<Run> =>
-    request(`/api/runs/${id}/reject`, { method: "POST", body: "{}" }),
+  reject: (id: string, feedback?: string): Promise<Run> =>
+    request(`/api/runs/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify(feedback && feedback.trim() ? { feedback: feedback.trim() } : {}),
+    }),
   abort: (id: string): Promise<Run> =>
     request(`/api/runs/${id}/abort`, { method: "POST", body: "{}" }),
   activityDraft: (id: string): Promise<ActivityDraft> =>

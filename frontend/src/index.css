@@ -1083,6 +1083,176 @@ kbd {
   color: var(--ink-soft);
 }
 
+/* Collapsible command output */
+.cmd-output-wrap { margin-top: 0.5rem; }
+.cmd-output-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0.15rem 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  transition: color var(--dur-fast) var(--ease-std);
+}
+.cmd-output-toggle:hover { color: var(--navy); }
+.cmd-output-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.cmd-output-flag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 2px;
+  padding: 0.02rem 0.3rem;
+}
+
+/* ============================================================
+   Fix plan card (approval gate)
+   ============================================================ */
+.plan-card {
+  flex: 1;
+  min-width: 0;
+  max-width: 620px;
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  background: linear-gradient(var(--gold-subtle), var(--gold-subtle)), var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.85rem;
+  background: rgba(252, 181, 20, 0.16);
+  border-bottom: 1px solid var(--warn-border);
+  flex-wrap: wrap;
+}
+.plan-badge { display: flex; align-items: center; gap: 3px; }
+.plan-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: 0.01em;
+}
+.plan-edit-toggle { margin-left: auto; margin-bottom: 0; font-size: 0.75rem; }
+
+.plan-rootcause {
+  margin: 0.85rem 0.85rem 0;
+  padding: 0.6rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.plan-rootcause-label,
+.plan-validation-label {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+.plan-rootcause p { font-size: 0.875rem; line-height: 1.5; color: var(--ink); }
+
+.plan-steps2 {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.plan-step { display: flex; gap: 0.6rem; align-items: flex-start; }
+.plan-step-num {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.1rem;
+}
+.plan-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.plan-step-meta { display: flex; align-items: center; gap: 0.4rem; }
+.plan-edit {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  width: 100%;
+  resize: vertical;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--warn);
+  background: var(--surface);
+  color: var(--ink);
+}
+.plan-edit:focus { outline: none; border-color: var(--navy); }
+
+.plan-validation { margin: 0.85rem 0.85rem 0; }
+.plan-validation ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.plan-validation code {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--navy);
+  background: var(--surface);
+  border: 1px solid var(--border-mid);
+  border-radius: 2px;
+  padding: 0.25rem 0.45rem;
+  display: inline-block;
+  word-break: break-all;
+}
+.plan-note { margin: 0.7rem 0.85rem 0; font-size: 0.8rem; color: var(--warn); line-height: 1.45; }
+
+/* Discuss / request changes */
+.plan-discuss { margin: 0.85rem 0.85rem 0; }
+.plan-discuss-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--navy-mid);
+  transition: color var(--dur-fast) var(--ease-std);
+}
+.plan-discuss-toggle:hover { color: var(--navy); }
+.plan-discuss-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.plan-discuss-area { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.plan-discuss-input {
+  font: inherit;
+  font-size: 0.85rem;
+  width: 100%;
+  resize: vertical;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 1.5;
+}
+.plan-discuss-input:focus { outline: none; border-color: var(--navy); }
+.plan-discuss-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+.plan-send { display: inline-flex; align-items: center; gap: 0.35rem; width: auto; font-size: 0.72rem; padding: 0.45rem 0.8rem; }
+
+.plan-actions { padding: 0.85rem; margin-top: 0.5rem; border-top: 1px solid var(--warn-border); }
+
 /* Done message */
 .chat-msg-done {
   display: flex;
@@ -1223,9 +1393,10 @@ kbd {
 
 /* Sidebar */
 .chat-sidebar {
+  order: -1; /* info sidebar on the LEFT of the conversation */
   width: 288px;
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   background: var(--surface);
   overflow-y: auto;
   padding: 1.25rem 1rem;
@@ -1360,5 +1531,5 @@ kbd {
 @media (max-width: 860px) {
   .chat-layout { flex-direction: column; height: auto; }
   .chat-main { min-height: 60dvh; }
-  .chat-sidebar { width: 100%; border-left: none; border-top: 1px solid var(--border); }
+  .chat-sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
 }
