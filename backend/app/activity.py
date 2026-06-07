@@ -34,6 +34,7 @@ def draft_activity(ticket: Dict[str, Any], history: List[Dict[str, Any]]) -> Dic
         out = llm.complete_json(
             _SYSTEM,
             f"TICKET: {ticket.get('title','')}\n{ticket.get('description','')}\n\nRUN LOG:\n{redact(log)}",
+            reasoning=True,  # use the strong model for the final ERP record too (ADR-0011)
         )
         if out:
             drafted = {k: (redact(str(out.get(k, ""))) or "").strip() for k in _FIELDS}

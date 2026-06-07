@@ -221,7 +221,7 @@ def test_repeated_gated_diagnostic_does_not_loop(env, monkeypatch):
     # must also RECEIVE its rejected attempts as feedback rather than flying blind.
     seen_rejected = []
 
-    def fake(ticket, system, history, memory="", must_plan=False, rejected=None, force=False):
+    def fake(ticket, system, history, memory="", must_plan=False, rejected=None, force=False, feedback=""):
         seen_rejected.append(len(rejected or []))
         return {"action": "diagnose", "command": "sudo /opt/hackathon/public-test.sh",
                 "rationale": "validate first"}
@@ -399,3 +399,31 @@ def test_repeated_failed_fix_escalates_after_max_attempts(env, monkeypatch):
     assert final["status"] == "escalated"
     fixes = [s for s in final["steps"] if s["kind"] == "fix"]
     assert 0 < len(fixes) <= orch_mod.MAX_FIX_ATTEMPTS
+
+
+def test_replan_can_diagnose_before_proposing_a_new_plan(env, monkeypatch):
+    # Regression (ticket 7005, run ed3aa58): after a fix fails validation, the agent must be
+    # able to FIRST diagnose why, then propose a better plan — not escalate on the first
+    # non-plan response.
+    actions = iter([
+        {"action": "plan", "root_cause": "first guess",
+         "steps": [{"command": "systemctl enable --now svc-a"}],
+         "validation": ["sudo /opt/hackathon/public-test.sh"]},
+        {"action": "diagnose", "command": "journalctl -u svc-a -n 20 --no-pager", "rationale": "why failed"},
+        {"action": "plan", "root_cause": "second guess",
+         "steps": [{"command": "systemctl enable --now svc-b"}], "validation": []},
+    ])
+    monkeypatch.setattr(orch_mod.agent, "propose_action", lambda *a, **k: next(actions))
+    monkeypatch.setattr(orch_mod, "_execute",
+                        lambda run, system, command, timeout=None:
+                        CommandResult("out", "", 1 if "public-test" in command else 0, 5))
+    client, _ = env
+
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+    first = client.get(f"/api/runs/{rid}").json()
+    assert first["status"] == "awaiting_plan_approval" and first["plan"]["root_cause"] == "first guess"
+
+    after = client.post(f"/api/runs/{rid}/approve", json={}).json()
+    assert after["status"] == "awaiting_plan_approval"
+    assert after["plan"]["root_cause"] == "second guess"  # replan produced a NEW plan
+    assert any(s["kind"] == "diagnose" and "journalctl" in s["command"] for s in after["steps"])

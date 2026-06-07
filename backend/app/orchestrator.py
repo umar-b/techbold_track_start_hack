@@ -200,18 +200,28 @@ def _escalate(run, reason: str) -> None:
     store.audit(run["id"]).add("escalated", reason=reason)
 
 
-def _analyze(run, ticket, system, mem: str = "") -> None:
-    """Analysis phase: run read-only diagnostics, then converge to a Plan (forced after a
-    soft limit, escalate at the hard limit). Diagnostics are read-only only; a mutating
-    "diagnostic" is rejected — fixes belong in a Plan the technician approves."""
+def _analyze(run, ticket, system, mem: str = "", feedback: str = "", replan: bool = False) -> None:
+    """Analysis phase: run read-only diagnostics for THIS round, then converge to a Plan
+    (forced at FORCE, escalate at HARD). Diagnostics are read-only only; a mutating
+    "diagnostic" is rejected — fixes belong in a Plan the technician approves.
+
+    On a `replan` (after a failed/rejected plan) the agent may FIRST run a few read-only probes
+    to understand why the fix failed, then propose a new plan — it gets a fresh diagnostic
+    budget for the round (it still sees the full history via _executed_history). It may not
+    `finish` a run whose fix just failed validation; that escalates instead.
+    """
     audit = store.audit(run["id"])
     transition(run, RunStatus.ANALYZING)
+    # Count diagnostics for THIS round only, so a replan can investigate the failure on a fresh
+    # budget rather than inheriting the pre-fix probe count (which would force-escalate at once).
+    round_start = len(run["steps"])
     while True:
         if is_terminal(run["status"]):  # aborted during analysis
             return
-        executed = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
-        attempts = sum(1 for s in run["steps"] if s["kind"] == "diagnose")
-        rejected = [s for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "rejected"]
+        round_steps = run["steps"][round_start:]
+        executed = sum(1 for s in round_steps if s["kind"] == "diagnose" and s["status"] == "executed")
+        attempts = sum(1 for s in round_steps if s["kind"] == "diagnose")
+        rejected = [s for s in round_steps if s["kind"] == "diagnose" and s["status"] == "rejected"]
         # FORCE a decision once we have enough evidence OR have tried too many times: the next
         # propose() is the model's last chance to plan/finish — a further diagnose is refused so
         # it can't keep probing forever (the unreachable host, every diagnostic failing, also
@@ -220,13 +230,18 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
         force = executed >= DIAGNOSE_FORCE_LIMIT or attempts >= DIAGNOSE_HARD_LIMIT
         must_plan = force or executed >= DIAGNOSE_SOFT_LIMIT or len(rejected) >= REJECTED_DIAGNOSE_LIMIT
         action = agent.propose_action(ticket, system, _executed_history(run), memory=mem,
-                                      must_plan=must_plan, rejected=rejected, force=force)
+                                      must_plan=must_plan, rejected=rejected, feedback=feedback, force=force)
         kind = action.get("action")
         if kind == "plan":
             _set_plan(run, action)
-            audit.add("plan_proposed", root_cause=run["plan"]["root_cause"], steps=len(run["plan"]["steps"]))
+            audit.add("replan_proposed" if replan else "plan_proposed",
+                      root_cause=run["plan"]["root_cause"], steps=len(run["plan"]["steps"]))
             return
         if kind == "finish":
+            if replan:
+                # A fix just failed validation — "finish" is not credible here. Hand off.
+                _escalate(run, "could not form a new plan after a failed attempt")
+                return
             executed_any = any(s["kind"] == "diagnose" and s["status"] == "executed" for s in run["steps"])
             attempted_any = any(s["kind"] == "diagnose" for s in run["steps"])
             if attempted_any and not executed_any:
@@ -241,7 +256,8 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
         # The model wants to diagnose again, but it has had its forced chance to plan — stop
         # here and hand to the technician with the evidence gathered, rather than probing on.
         if force:
-            _escalate(run, "could not converge on a plan after diagnostics")
+            _escalate(run, "could not form a new plan after a failed attempt" if replan
+                      else "could not converge on a plan after diagnostics")
             return
         # diagnose — read-only only
         cmd = action.get("command", "")
@@ -308,17 +324,9 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
 
 
 def _replan(run, ticket, system, feedback: str = "") -> None:
-    """After a failed/rejected plan, the agent forms a NEW plan for the technician to approve.
-
-    `feedback` is optional technician steer (the "discuss" loop) passed through to the agent.
+    """After a failed/rejected plan, re-enter analysis: the agent may run a few read-only probes
+    to understand what went wrong, then propose a NEW plan for the technician to approve. This is
+    the only loop, and it is human-gated (each new plan needs approval; bounded by
+    MAX_FIX_ATTEMPTS). `feedback` is optional technician steer (the "discuss" loop).
     """
-    transition(run, RunStatus.ANALYZING)
-    mem = memory_mod.retrieve(ticket, system)
-    action = agent.propose_action(ticket, system, _executed_history(run), memory=mem,
-                                  must_plan=True, feedback=feedback)
-    if action.get("action") == "plan":
-        _set_plan(run, action)
-        store.audit(run["id"]).add("replan_proposed", root_cause=run["plan"]["root_cause"],
-                                   steps=len(run["plan"]["steps"]))
-    else:
-        _escalate(run, "could not form a new plan after a failed attempt")
+    _analyze(run, ticket, system, memory_mod.retrieve(ticket, system), feedback=feedback, replan=True)
