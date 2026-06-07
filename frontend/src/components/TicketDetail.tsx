@@ -117,17 +117,25 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
 
           {error && <p className="error" style={{ marginBottom: "0.75rem" }}>{error}</p>}
 
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleStart}
-          >
-            Connect &amp; diagnose
-          </button>
+          {ticket.status === "DONE" ? (
+            <p className="hint" style={{ marginTop: 0 }}>
+              This ticket is resolved — the resolution is shown above.
+            </p>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleStart}
+              >
+                Connect &amp; diagnose
+              </button>
 
-          <p className="hint">
-            The agent runs read-only diagnostics, then proposes a fix plan for your approval. Nothing changes without you.
-          </p>
+              <p className="hint">
+                The agent runs read-only diagnostics, then proposes a fix plan for your approval. Nothing changes without you.
+              </p>
+            </>
+          )}
         </aside>
       </div>
     </section>
