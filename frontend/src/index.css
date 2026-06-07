@@ -1855,6 +1855,7 @@ kbd {
 /* Input bar */
 .chat-input-bar {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.875rem 1.75rem;
   background: var(--surface);
