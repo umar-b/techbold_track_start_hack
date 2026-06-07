@@ -1114,6 +1114,22 @@ p { margin: 0; }
   font-weight: 500;
 }
 
+.chat-side-elapsed {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+.chat-side-elapsed .mono { font-size: 0.8125rem; color: var(--navy); font-variant-numeric: tabular-nums; }
+.chat-side-elapsed-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
 .chat-side-divider {
   border: none;
   border-top: 1px solid var(--border);

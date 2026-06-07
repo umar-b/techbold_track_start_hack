@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert, Clock } from "lucide-react";
 import type { CustomerSystem, PlanStep, PlanStepEdit, Step, Ticket } from "../types";
 import { useRun } from "../hooks/useRun";
 import type { ConnectionState } from "../hooks/useRun";
 import { RiskBadge } from "./RiskBadge";
 import { CopyButton } from "./CopyButton";
-import { formatDuration } from "../lib/format";
+import { useElapsed } from "../hooks/useElapsed";
+import { formatDuration, formatElapsed } from "../lib/format";
 
 type Props = {
   ticket: Ticket;
@@ -28,6 +29,7 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
   const finished = status === "finished";
   const escalated = status === "escalated";
   const aborted = status === "aborted";
+  const elapsed = useElapsed(run?.created_at, isTerminal);
   const working =
     starting ||
     status === "analyzing" ||
@@ -131,6 +133,13 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
             <span className={`pill st-${ticket.status}`}>{ticket.status}</span>
           </div>
           <div className="chat-side-customer">{ticket.customer_name}</div>
+          {run && (
+            <div className="chat-side-elapsed" title={isTerminal ? "Total run time" : "Elapsed"}>
+              <Clock size={11} />
+              <span className="mono">{formatElapsed(elapsed)}</span>
+              {!isTerminal && <span className="chat-side-elapsed-label">elapsed</span>}
+            </div>
+          )}
         </div>
 
         <div className="chat-side-divider" />
