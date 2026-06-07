@@ -130,6 +130,27 @@ export interface RunSummary {
   created_at: string;
 }
 
+// A persisted, durable snapshot of a terminated run (GET /api/tickets/{id}/runs,
+// /api/runs/{id}/record) — the full step log of every attempt, resolved or not.
+export interface RunRecordCounts {
+  steps: number;
+  fixes: number;
+  fixes_executed: number;
+  fixes_failed: number;
+}
+
+export interface RunRecord {
+  id: string;
+  ticket_id: number;
+  status: RunStatus;
+  outcome: RunStatus;
+  created_at: string;
+  ended_at: string;
+  memory_count: number;
+  counts: RunRecordCounts;
+  steps: Step[];
+}
+
 export interface ActivityDraft {
   summary: string;
   root_cause: string;

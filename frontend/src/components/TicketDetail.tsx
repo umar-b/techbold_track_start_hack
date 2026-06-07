@@ -4,6 +4,7 @@ import type { Activity, CustomerSystem, Ticket } from "../types";
 import { api, getErrorMessage } from "../api";
 import { formatRelative, parseListish } from "../lib/format";
 import { CopyButton } from "./CopyButton";
+import { TicketAttempts } from "./TicketAttempts";
 
 type Props = {
   ticketId: number;
@@ -139,6 +140,8 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
           )}
         </aside>
       </div>
+
+      <TicketAttempts ticketId={ticketId} reloadKey={reloadKey} />
     </section>
   );
 }

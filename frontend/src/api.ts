@@ -1,4 +1,4 @@
-import type { Activity, ActivityDraft, AuditEntry, CustomerSystem, Me, MemoryNote, PlanStepEdit, Run, RunSummary, Stats, Ticket } from "./types";
+import type { Activity, ActivityDraft, AuditEntry, CustomerSystem, Me, MemoryNote, PlanStepEdit, Run, RunRecord, RunSummary, Stats, Ticket } from "./types";
 
 export const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
@@ -128,6 +128,8 @@ export const api = {
     MOCK_MODE ? mockApi.getTicket(id) : request(`/api/tickets/${id}`),
   ticketActivities: (id: number): Promise<{ ticket_id: number; activities: Activity[] }> =>
     MOCK_MODE ? Promise.resolve({ ticket_id: id, activities: [] }) : request(`/api/tickets/${id}/activities`),
+  ticketRuns: (id: number): Promise<{ ticket_id: number; runs: RunRecord[] }> =>
+    MOCK_MODE ? Promise.resolve({ ticket_id: id, runs: [] }) : request(`/api/tickets/${id}/runs`),
   startRun: (ticketId: number): Promise<Run> =>
     request(`/api/runs`, { method: "POST", body: JSON.stringify({ ticket_id: ticketId }) }),
   listRuns: (): Promise<RunSummary[]> =>

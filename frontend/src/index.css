@@ -846,6 +846,156 @@ p { margin: 0; }
 }
 
 /* ============================================================
+   Ticket attempts — durable history of every run (incl. failed/aborted)
+   ============================================================ */
+.attempts {
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-mid);
+}
+.attempts-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+.attempts-count {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--navy-mid);
+  background: var(--navy-subtle);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+.attempts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.attempt {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.attempt--aborted,
+.attempt--escalated { border-color: var(--warn-border); }
+
+.attempt-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-soft);
+  transition: background var(--dur-fast) var(--ease-std);
+}
+.attempt-head:hover { background: var(--off-white); }
+.attempt-head:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.attempt-head > svg:first-child { color: var(--muted); flex-shrink: 0; }
+
+.attempt-counts { font-size: 0.8125rem; color: var(--ink-soft); }
+.attempt-seed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--navy-mid);
+  background: var(--navy-subtle);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+.attempt-when {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.attempt-body {
+  padding: 0.25rem 0.85rem 0.85rem;
+  border-top: 1px solid var(--border);
+}
+.attempt-finish {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.attempt-finish.is-ok { background: var(--safe-bg); border: 1px solid var(--safe-border); color: var(--safe); }
+.attempt-finish.is-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn); }
+.attempt-finish svg { flex-shrink: 0; margin-top: 0.1rem; }
+.attempt-empty { font-size: 0.8125rem; color: var(--muted); margin: 0.75rem 0 0.25rem; }
+
+.attempt-steps {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.attempt-step {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--off-white);
+  padding: 0.6rem 0.7rem;
+}
+.attempt-step--skipped { opacity: 0.72; }
+.attempt-step-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.attempt-kind {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.attempt-skip-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.attempt-step-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.attempt-rationale {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0.4rem 0 0;
+}
+.attempt-rationale--danger { color: var(--danger); }
+.attempt-step .cmd-output-wrap { margin-top: 0.5rem; }
+
+/* ============================================================
    Ticket detail
    ============================================================ */
 .detail-grid {
