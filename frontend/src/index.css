@@ -579,6 +579,19 @@ p { margin: 0; }
   outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
+.ticket-row.is-selected {
+  border-color: var(--navy-mid);
+  box-shadow: var(--shadow), inset 3px 0 0 var(--gold);
+}
+
+.ticket-kbd-hint {
+  width: 100%;
+  font-size: 0.72rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
 
 .ticket-id {
   font-family: var(--mono);
@@ -1643,6 +1656,13 @@ kbd {
   padding: 0.05rem 0.45rem;
 }
 .audit-body { margin-top: 0.6rem; }
+.audit-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  margin-bottom: 0.6rem;
+}
 .audit-list {
   list-style: none;
   margin: 0;

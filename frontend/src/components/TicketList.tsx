@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
 import type { RunSummary, Ticket } from "../types";
 import { api, getErrorMessage } from "../api";
@@ -43,6 +43,9 @@ export function TicketList({ onOpen }: Props) {
     return m;
   }, [runs]);
 
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [selected, setSelected] = useState(-1);
+
   // Filtering is client-side over the already-fetched list — sort stays server-side.
   const filtered = useMemo(() => {
     if (!tickets) return null;
@@ -62,6 +65,38 @@ export function TicketList({ onOpen }: Props) {
   const total = tickets?.length ?? 0;
   const shown = filtered?.length ?? 0;
   const isFiltering = query.trim() !== "" || statusFilter !== "all" || priorityFilter !== "all";
+
+  // Keyboard navigation: "/" focuses search, j/k (or arrows) move a highlighted
+  // row, Enter opens it. Typing in an input is respected (only "/" steals focus).
+  useEffect(() => { setSelected(-1); }, [query, statusFilter, priorityFilter, sort]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (e.key === "/" && !typing) { e.preventDefault(); searchRef.current?.focus(); return; }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const list = filtered ?? [];
+      if (!list.length) return;
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelected((i) => Math.min((i < 0 ? -1 : i) + 1, list.length - 1));
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelected((i) => Math.max((i < 0 ? 0 : i) - 1, 0));
+      } else if (e.key === "Enter" && selected >= 0 && selected < list.length) {
+        e.preventDefault();
+        onOpen(list[selected].id);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filtered, selected, onOpen]);
+
+  useEffect(() => {
+    if (selected < 0) return;
+    document.querySelector(`[data-ticket-idx="${selected}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
 
   function clearFilters() {
     setQuery("");
@@ -87,9 +122,10 @@ export function TicketList({ onOpen }: Props) {
         <div className="search">
           <Search size={14} className="search-icon" />
           <input
+            ref={searchRef}
             type="search"
             className="search-input"
-            placeholder="Search id, title or customer…"
+            placeholder="Search id, title or customer…   ( / )"
             aria-label="Search tickets"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -112,6 +148,9 @@ export function TicketList({ onOpen }: Props) {
             {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
         </label>
+        <span className="ticket-kbd-hint">
+          <kbd>/</kbd> search · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>↵</kbd> open
+        </span>
       </div>
 
       {error && (
@@ -155,9 +194,16 @@ export function TicketList({ onOpen }: Props) {
             </div>
           ) : (
             <ul className="ticket-list">
-              {filtered?.map((t) => (
+              {filtered?.map((t, i) => (
                 <li key={t.id}>
-                  <button type="button" className="ticket-row" onClick={() => onOpen(t.id)}>
+                  <button
+                    type="button"
+                    className={`ticket-row${i === selected ? " is-selected" : ""}`}
+                    data-ticket-idx={i}
+                    aria-selected={i === selected}
+                    onClick={() => onOpen(t.id)}
+                    onMouseEnter={() => setSelected(i)}
+                  >
                     <span className="ticket-id">#{t.id}</span>
                     <span className="ticket-title">
                       {t.title}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollText, ChevronDown, ChevronRight } from "lucide-react";
+import { ScrollText, ChevronDown, ChevronRight, Download } from "lucide-react";
 import type { AuditEntry } from "../types";
 import { api, getErrorMessage } from "../api";
 
@@ -29,6 +29,19 @@ export function AuditTrail({ runId, refreshKey }: Props) {
     return () => { active = false; };
   }, [open, runId, refreshKey]);
 
+  function downloadJson() {
+    if (!entries) return;
+    const blob = new Blob([JSON.stringify({ run_id: runId, entries }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit-${runId}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="audit">
       <button type="button" className="audit-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -39,6 +52,11 @@ export function AuditTrail({ runId, refreshKey }: Props) {
       </button>
       {open && (
         <div className="audit-body">
+          {entries && entries.length > 0 && (
+            <button type="button" className="link audit-download" onClick={downloadJson}>
+              <Download size={11} /> Download JSON
+            </button>
+          )}
           {error && <p className="error">{error}</p>}
           {!entries && !error && <p className="muted">Loading…</p>}
           {entries && entries.length === 0 && <p className="muted">No events yet.</p>}
