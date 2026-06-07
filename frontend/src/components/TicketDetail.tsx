@@ -12,14 +12,16 @@ type Props = {
 export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
   const [data, setData] = useState<{ ticket: Ticket; system: CustomerSystem } | null>(null);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setError("");
     api.getTicket(ticketId)
       .then((d) => { if (active) setData(d); })
       .catch((e) => { if (active) setError(getErrorMessage(e)); });
     return () => { active = false; };
-  }, [ticketId]);
+  }, [ticketId, reloadKey]);
 
   function handleStart() {
     if (!data) return;
@@ -33,6 +35,10 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
           <ArrowLeft size={13} /> All tickets
         </button>
         <p className="error">{error}</p>
+        <button type="button" className="btn btn-ghost" style={{ width: "auto", marginTop: "0.75rem" }}
+                onClick={() => setReloadKey((k) => k + 1)}>
+          Retry
+        </button>
       </section>
     );
   }
@@ -69,6 +75,7 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
             <span className={`pill pri-${ticket.priority}`}>{ticket.priority}</span>
             <span className={`pill st-${ticket.status}`}>{ticket.status}</span>
             <span className="muted">{ticket.customer_name}</span>
+            {ticket.tags?.map((tag) => <span key={tag} className="tag">{tag}</span>)}
           </div>
           <pre className="report">{ticket.description}</pre>
         </article>

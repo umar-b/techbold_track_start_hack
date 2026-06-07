@@ -15,6 +15,7 @@ export function TicketList({ onOpen }: Props) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>("all");
   const [priorityFilter, setPriorityFilter] = useState<(typeof PRIORITY_OPTIONS)[number]>("all");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -24,7 +25,7 @@ export function TicketList({ onOpen }: Props) {
       .then((data) => { if (active) setTickets(data); })
       .catch((e) => { if (active) setError(getErrorMessage(e)); });
     return () => { active = false; };
-  }, [sort]);
+  }, [sort, reloadKey]);
 
   // Filtering is client-side over the already-fetched list — sort stays server-side.
   const filtered = useMemo(() => {
@@ -97,7 +98,15 @@ export function TicketList({ onOpen }: Props) {
         </label>
       </div>
 
-      {error && <p className="error">Could not load tickets: {error}</p>}
+      {error && (
+        <div>
+          <p className="error">Could not load tickets: {error}</p>
+          <button type="button" className="btn btn-ghost" style={{ width: "auto", marginTop: "0.5rem" }}
+                  onClick={() => setReloadKey((k) => k + 1)}>
+            Retry
+          </button>
+        </div>
+      )}
 
       {!tickets && !error && (
         <div className="loading-row">

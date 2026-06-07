@@ -347,6 +347,20 @@ p { margin: 0; }
 .st-run-executing,
 .st-run-verifying         { background: var(--navy-subtle); color: var(--navy-mid); }
 
+/* Ticket tags */
+.tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  background: var(--off-white);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  white-space: nowrap;
+}
+.tag::before { content: "#"; color: var(--muted); }
+
 /* Risk badges */
 .badge {
   font-family: var(--mono);
