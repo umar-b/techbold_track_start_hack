@@ -89,7 +89,7 @@ export function useRun(ticketId: number) {
         setRun((prev) => (prev ? { ...prev, status: msg.status as Run["status"] } : prev));
         if (TERMINAL.includes(msg.status)) {
           es.close();
-          setConnection("closed");
+          if (mounted.current) setConnection("closed");
           if (esRef.current === es) esRef.current = null;
         }
       }
@@ -125,8 +125,12 @@ export function useRun(ticketId: number) {
       }
     } catch (e) {
       const msg = getErrorMessage(e);
-      if (mounted.current) setError(msg);
-      toast.error(msg);
+      // Guard both: a stale action that rejects after unmount shouldn't surface
+      // an out-of-context error toast for a run the technician already left.
+      if (mounted.current) {
+        setError(msg);
+        toast.error(msg);
+      }
     } finally {
       if (mounted.current) setActing(false);
     }

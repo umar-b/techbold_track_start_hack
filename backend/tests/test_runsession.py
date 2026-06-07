@@ -85,6 +85,17 @@ def test_reap_skips_session_with_command_in_flight(monkeypatch):
     assert reaped == 0 and not s.closed and run["id"] in store._sessions
 
 
+def test_reap_evicts_session_missing_last_used_stamp(monkeypatch):
+    store = _store(monkeypatch)
+    run = store.create(7001)
+    s = store.session(run, SYSTEM)
+    del store._session_last_used[run["id"]]  # a lost stamp must not make it immortal
+
+    reaped = store.reap_idle_sessions(ttl_seconds=300.0, now=10_000.0)
+
+    assert reaped == 1 and s.closed and run["id"] not in store._sessions
+
+
 def test_reap_disabled_with_nonpositive_ttl(monkeypatch):
     store = _store(monkeypatch)
     run = store.create(7001)

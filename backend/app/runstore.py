@@ -136,7 +136,9 @@ class RunStore:
         current = time.monotonic() if now is None else now
         reaped = 0
         for run_id in list(self._sessions.keys()):
-            last = self._session_last_used.get(run_id, current)
+            # Missing stamp -> treat as maximally stale (eligible), never as fresh,
+            # so a session that somehow lost its timestamp can still be reclaimed.
+            last = self._session_last_used.get(run_id, 0.0)
             if current - last < ttl_seconds:
                 continue
             lock = self.lock(run_id)
