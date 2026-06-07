@@ -1,4 +1,4 @@
-import type { ActivityDraft, AuditEntry, CustomerSystem, Me, PlanStepEdit, Run, Ticket } from "./types";
+import type { ActivityDraft, AuditEntry, CustomerSystem, Me, PlanStepEdit, Run, RunSummary, Ticket } from "./types";
 
 export const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
@@ -128,6 +128,7 @@ export const api = {
     MOCK_MODE ? mockApi.getTicket(id) : request(`/api/tickets/${id}`),
   startRun: (ticketId: number): Promise<Run> =>
     request(`/api/runs`, { method: "POST", body: JSON.stringify({ ticket_id: ticketId }) }),
+  listRuns: (): Promise<RunSummary[]> => request(`/api/runs`),
   getRun: (id: string): Promise<Run> => request(`/api/runs/${id}`),
   approve: (id: string, steps?: PlanStepEdit[]): Promise<Run> =>
     request(`/api/runs/${id}/approve`, {

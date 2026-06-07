@@ -38,15 +38,22 @@ export function useRun(ticketId: number) {
   const startedRef = useRef(false); // fire the start POST once, even under StrictMode double-mount
   const esRef = useRef<EventSource | null>(null);
 
-  // Start the run once. POST /api/runs returns the run when analysis has
-  // converged (awaiting_plan_approval) or terminated (finished/escalated).
+  // Start or RESUME the run once. If this ticket already has a live run (the
+  // technician navigated away and back), adopt it instead of starting a second
+  // one — the backend allows only one active run per ticket and would 409.
+  // Otherwise POST /api/runs, which returns once analysis has converged
+  // (awaiting_plan_approval) or terminated.
   useEffect(() => {
     mounted.current = true;
     if (!startedRef.current) {
       startedRef.current = true;
       setStarting(true);
       api
-        .startRun(ticketId)
+        .listRuns()
+        .then((runs) => {
+          const active = runs.find((r) => r.ticket_id === ticketId && !TERMINAL.includes(r.status));
+          return active ? api.getRun(active.id) : api.startRun(ticketId);
+        })
         .then((r) => { if (mounted.current) setRun(r); })
         .catch((e) => { if (mounted.current) setError(getErrorMessage(e)); })
         .finally(() => { if (mounted.current) setStarting(false); });

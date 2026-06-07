@@ -105,6 +105,14 @@ export interface AuditEntry {
   [field: string]: unknown;
 }
 
+export interface RunSummary {
+  id: string;
+  ticket_id: number;
+  status: RunStatus;
+  steps: number;
+  created_at: string;
+}
+
 export interface ActivityDraft {
   summary: string;
   root_cause: string;
