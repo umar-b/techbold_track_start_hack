@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { CircleCheck, Loader2 } from "lucide-react";
-import type { ActivityDraft } from "../types";
+import { CircleCheck, Loader2, Check, X } from "lucide-react";
+import type { ActivityDraft, Run } from "../types";
 import { api, getErrorMessage } from "../api";
 import { toast } from "../lib/toast";
+import { formatDuration } from "../lib/format";
 
 type Props = { runId?: string; prefillDraft?: ActivityDraft; onDone: () => void };
 
@@ -16,6 +17,7 @@ const FIELDS: { key: keyof ActivityDraft; label: string; rows: number; hint?: st
 
 export function ActivityReview({ runId, prefillDraft, onDone }: Props) {
   const [draft, setDraft] = useState<ActivityDraft | null>(prefillDraft ?? null);
+  const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -28,6 +30,19 @@ export function ActivityReview({ runId, prefillDraft, onDone }: Props) {
       .catch((e) => { if (active) setError(getErrorMessage(e)); });
     return () => { active = false; };
   }, [runId, prefillDraft]);
+
+  // Pull the run so the technician can see what the agent actually did while writing
+  // the activity. Best-effort context — a failure here must not block documenting.
+  useEffect(() => {
+    if (!runId) return;
+    let active = true;
+    api.getRun(runId).then((r) => { if (active) setRun(r); }).catch(() => { /* optional context */ });
+    return () => { active = false; };
+  }, [runId]);
+
+  const ranSteps = (run?.steps ?? []).filter(
+    (s) => ["diagnose", "fix", "validate"].includes(s.kind) && s.command,
+  );
 
   async function handleSubmit() {
     if (!draft) return;
@@ -95,6 +110,28 @@ export function ActivityReview({ runId, prefillDraft, onDone }: Props) {
       <p className="muted">
         Edit before submitting to the ERP. Secrets are redacted automatically.
       </p>
+
+      {ranSteps.length > 0 && (
+        <details className="ran-timeline" open>
+          <summary>What the agent did <span className="muted">({ranSteps.length} command{ranSteps.length === 1 ? "" : "s"})</span></summary>
+          <ol className="ran-list">
+            {ranSteps.map((s) => {
+              const ok = s.status === "executed";
+              const dur = formatDuration(s.result?.duration_ms);
+              return (
+                <li key={s.index} className="ran-step">
+                  <span className={`ran-icon ${ok ? "ran-ok" : "ran-bad"}`}>
+                    {ok ? <Check size={11} /> : <X size={11} />}
+                  </span>
+                  <code className="ran-cmd">{s.command}</code>
+                  <span className="ran-kind">{s.kind}</span>
+                  {dur && <span className="ran-dur">{dur}</span>}
+                </li>
+              );
+            })}
+          </ol>
+        </details>
+      )}
 
       <div className="form">
         {FIELDS.map((f) => (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert, Clock, ChevronDown, ChevronRight, Send } from "lucide-react";
+import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert, Clock, ChevronDown, ChevronRight, Send, Brain } from "lucide-react";
 import type { CustomerSystem, PlanStep, PlanStepEdit, Step, Ticket } from "../types";
 import { useRun } from "../hooks/useRun";
 import type { ConnectionState } from "../hooks/useRun";
@@ -72,6 +72,13 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
           {starting && (
             <div className="chat-msg-status">
               Running read-only diagnostics and forming a plan — this can take a moment…
+            </div>
+          )}
+
+          {run && (run.memory_count ?? 0) > 0 && (
+            <div className="chat-seed" title="Past incidents seeded the agent's hypotheses">
+              <Brain size={12} />
+              Seeded by {run.memory_count} past incident{run.memory_count === 1 ? "" : "s"} — verified against live evidence.
             </div>
           )}
 

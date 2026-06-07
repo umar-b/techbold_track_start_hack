@@ -868,6 +868,39 @@ p { margin: 0; }
   padding-top: 0.5rem;
 }
 
+/* Activity review — "what the agent did" timeline */
+.ran-timeline {
+  margin: 1.25rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--warm);
+  padding: 0.75rem 1rem;
+}
+.ran-timeline summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.ran-timeline summary .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.ran-list { list-style: none; margin: 0.75rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.ran-step { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; flex-wrap: wrap; }
+.ran-icon {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.ran-ok { background: var(--safe-bg); color: var(--safe); border: 1px solid var(--safe-border); }
+.ran-bad { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+.ran-cmd {
+  font-family: var(--mono); font-size: 0.78rem; color: var(--navy);
+  background: var(--surface); border: 1px solid var(--border-mid); border-radius: 2px;
+  padding: 0.15rem 0.4rem; flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap;
+}
+.ran-kind { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+.ran-dur { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); }
+
 /* ============================================================
    Success / done state
    ============================================================ */
@@ -1040,6 +1073,20 @@ p { margin: 0; }
   font-size: 0.9rem;
   line-height: 1.55;
   max-width: 520px;
+}
+
+/* Memory seed chip */
+.chat-seed {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--navy-mid);
+  background: var(--navy-subtle);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
 }
 
 /* Status line */
