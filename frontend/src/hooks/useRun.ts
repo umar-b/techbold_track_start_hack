@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlanStepEdit, Run, Step } from "../types";
 import { api, getErrorMessage, BASE } from "../api";
+import { toast } from "../lib/toast";
 
 const TERMINAL = ["finished", "aborted", "escalated"];
 
@@ -103,11 +104,12 @@ export function useRun(ticketId: number) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
-  const action = useCallback(async (fn: () => Promise<Run>) => {
+  const action = useCallback(async (fn: () => Promise<Run>, successMsg?: string) => {
     setActing(true);
     setError("");
     try {
       const r = await fn();
+      if (successMsg) toast.success(successMsg);
       if (!mounted.current) return;
       // The POST returns immediately (async backend); SSE owns steps/plan, so only adopt
       // the authoritative status here — never clobber SSE-streamed steps with the snapshot.
@@ -122,22 +124,25 @@ export function useRun(ticketId: number) {
         setConnection("closed");
       }
     } catch (e) {
-      if (mounted.current) setError(getErrorMessage(e));
+      const msg = getErrorMessage(e);
+      if (mounted.current) setError(msg);
+      toast.error(msg);
     } finally {
       if (mounted.current) setActing(false);
     }
   }, []);
 
   const approve = useCallback((editedSteps?: PlanStepEdit[]) => {
-    if (run) void action(() => api.approve(run.id, editedSteps));
+    if (run) void action(() => api.approve(run.id, editedSteps),
+      editedSteps?.length ? "Edited plan approved — applying the fix" : "Plan approved — applying the fix");
   }, [run, action]);
 
   const reject = useCallback(() => {
-    if (run) void action(() => api.reject(run.id));
+    if (run) void action(() => api.reject(run.id), "Plan rejected — the agent is replanning");
   }, [run, action]);
 
   const abort = useCallback(() => {
-    if (run) void action(() => api.abort(run.id));
+    if (run) void action(() => api.abort(run.id), "Run aborted");
   }, [run, action]);
 
   return {

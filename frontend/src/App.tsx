@@ -5,6 +5,7 @@ import { TicketList } from "./components/TicketList";
 import { TicketDetail } from "./components/TicketDetail";
 import { ActivityReview } from "./components/ActivityReview";
 import { AgentChatView } from "./components/AgentChatView";
+import { Toaster } from "./components/Toaster";
 
 type ViewName = "list" | "detail" | "chat" | "activity";
 type View =
@@ -51,6 +52,7 @@ export default function App() {
 
   return (
     <div style={{ overflowX: "hidden" }}>
+      <Toaster />
       <header className="app-header">
         <div className="brand">
           <span className="brand-name">techbold</span>

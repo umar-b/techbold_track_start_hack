@@ -796,6 +796,43 @@ p { margin: 0; }
 }
 
 /* ============================================================
+   Toasts
+   ============================================================ */
+.toast-stack {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: min(380px, calc(100vw - 2.5rem));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border-mid);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
+  font-size: 0.875rem;
+  color: var(--ink);
+  pointer-events: auto;
+}
+.toast-icon { display: flex; flex-shrink: 0; }
+.toast-msg { flex: 1; line-height: 1.4; }
+.toast--success { border-left-color: var(--safe); }
+.toast--success .toast-icon { color: var(--safe); }
+.toast--error { border-left-color: var(--danger); }
+.toast--error .toast-icon { color: var(--danger); }
+.toast--info { border-left-color: var(--navy-mid); }
+.toast--info .toast-icon { color: var(--navy-mid); }
+
+/* ============================================================
    Agent chat view
    ============================================================ */
 .chat-layout {

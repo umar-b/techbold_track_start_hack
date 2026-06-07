@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CircleCheck, Loader2 } from "lucide-react";
 import type { ActivityDraft } from "../types";
 import { api, getErrorMessage } from "../api";
+import { toast } from "../lib/toast";
 
 type Props = { runId?: string; prefillDraft?: ActivityDraft; onDone: () => void };
 
@@ -36,9 +37,12 @@ export function ActivityReview({ runId, prefillDraft, onDone }: Props) {
       if (runId) {
         await api.submitActivity(runId, { ...draft, set_done: true });
       }
+      toast.success("Activity logged to ERP — ticket marked DONE");
       setDone(true);
     } catch (e) {
-      setError(getErrorMessage(e));
+      const msg = getErrorMessage(e);
+      setError(msg);
+      toast.error(msg);
       setSubmitting(false);
     }
   }
