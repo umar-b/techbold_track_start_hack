@@ -335,3 +335,22 @@ def test_start_run_reports_memory_seed_count(env, monkeypatch):
     monkeypatch.setattr(orch_mod.agent, "propose_action", lambda *a, **k: {"action": "finish", "summary": "ok"})
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
     assert run.get("memory_count") == 0  # tmp memory dir is empty
+
+
+def test_submit_activity_is_readable_per_ticket(env, monkeypatch):
+    client, _ = env
+    _script(monkeypatch, [
+        {"action": "plan", "root_cause": "nginx down",
+         "steps": [{"command": "systemctl enable --now nginx"}], "validation": []},
+    ])
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+    client.post(f"/api/runs/{rid}/approve", json={})
+    client.post(f"/api/runs/{rid}/submit-activity",
+                json={"summary": "Restored nginx", "root_cause": "unit was disabled",
+                      "actions_taken": "enabled the unit", "commands_summary": "systemctl enable --now nginx",
+                      "validation_result": "HTTP 200"})
+
+    body = client.get("/api/tickets/7001/activities").json()
+    assert body["ticket_id"] == 7001
+    assert body["activities"] and body["activities"][0]["summary"] == "Restored nginx"
+    assert body["activities"][0]["root_cause"] == "unit was disabled"

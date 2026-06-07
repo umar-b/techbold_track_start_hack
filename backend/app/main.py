@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from . import activity as activity_mod
+from . import activity_store
 from . import memory as memory_mod
 from . import orchestrator as orch
 from . import schemas
@@ -106,6 +107,12 @@ def create_app() -> FastAPI:
     def ticket_detail(ticket_id: int, phoenix: PhoenixClient = Depends(get_phoenix)):
         return {"ticket": _erp(phoenix.get_ticket, ticket_id),
                 "system": _erp(phoenix.customer_system, ticket_id)}
+
+    @app.get("/api/tickets/{ticket_id}/activities")
+    def ticket_activities(ticket_id: int):
+        """Locally-mirrored activities for a ticket (newest first) — the resolution
+        shown when a solved ticket is reopened. Phoenix has no read-back endpoint."""
+        return {"ticket_id": ticket_id, "activities": activity_store.for_ticket(ticket_id)}
 
     @app.post("/api/runs")
     def start_run(body: schemas.StartRunIn, phoenix: PhoenixClient = Depends(get_phoenix)):
@@ -220,6 +227,10 @@ def create_app() -> FastAPI:
         created = _erp(phoenix.create_activity, payload)
         if body.set_done:
             _erp(phoenix.set_status, run["ticket_id"], "DONE")
+        # Mirror the activity locally so the resolution is shown when the ticket is
+        # reopened — Phoenix has no read-back endpoint. Already-redacted payload.
+        activity_store.record(run["ticket_id"], {
+            **payload, "id": created.get("id") if isinstance(created, dict) else None})
         # Append a sanitized memory note (ADR-0001). Must never break the submit.
         note_path = None
         try:
