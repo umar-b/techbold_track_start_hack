@@ -77,3 +77,23 @@ def test_notes_link_to_related_prior_notes(monkeypatch, tmp_path):
     memory.write_note(_resolved_run("r2", 7002), t2, {"root_cause": "upstream slow", "validation_result": "ok"}, SYSTEM)
     b_text = (mem / "ticket7002-r2.md").read_text(encoding="utf-8")
     assert "ticket7001-r1" in b_text  # the second note links back to the first — a graph edge formed
+
+
+def test_retrieve_notes_returns_structured_summaries(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    memory.write_note(_resolved_run("r1"), TICKET, ACTIVITY, SYSTEM)
+    new_ticket = {"id": 7009, "title": "nginx web server down again", "description": "site returns 502"}
+    notes = memory.retrieve_notes(new_ticket, SYSTEM)
+    assert notes and notes[0]["id"].startswith("ticket7001")
+    assert "nginx" in notes[0]["title"].lower()
+    assert "not enabled at boot" in notes[0]["root_cause"]
+
+
+def test_list_notes_returns_all_with_summary_fields(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    memory.write_note(_resolved_run("r1", 7001), TICKET, ACTIVITY, SYSTEM)
+    t2 = {"id": 7002, "title": "disk full on db server", "description": "disk at 95%"}
+    memory.write_note(_resolved_run("r2", 7002), t2, {"root_cause": "logs", "validation_result": "ok"}, SYSTEM)
+    notes = memory.list_notes()
+    assert {n["id"] for n in notes} == {"ticket7001-r1", "ticket7002-r2"}
+    assert all({"title", "tags", "created_at", "root_cause"} <= set(n) for n in notes)

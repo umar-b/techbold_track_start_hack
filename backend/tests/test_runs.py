@@ -316,3 +316,22 @@ def test_reject_with_feedback_steers_the_replan(env, monkeypatch):
     assert run["status"] == "awaiting_plan_approval"
     assert seen.get("feedback") == "reload, don't restart"  # the steer reached the agent
     assert run["plan"]["root_cause"] == "b"
+
+
+def test_memory_endpoint_lists_notes(env):
+    client, _ = env
+    from app import memory as mem
+    mem.write_note(
+        {"id": "r1", "ticket_id": 7001, "created_at": "2026-06-06T10:00:00Z",
+         "steps": [{"kind": "fix", "command": "systemctl enable --now nginx", "status": "executed"}]},
+        {"id": 7001, "title": "nginx down", "description": "502"},
+        {"root_cause": "not enabled", "validation_result": "ok"}, {"os": "Ubuntu"})
+    body = client.get("/api/memory").json()
+    assert any(n["id"].startswith("ticket7001") for n in body["notes"])
+
+
+def test_start_run_reports_memory_seed_count(env, monkeypatch):
+    client, _ = env
+    monkeypatch.setattr(orch_mod.agent, "propose_action", lambda *a, **k: {"action": "finish", "summary": "ok"})
+    run = client.post("/api/runs", json={"ticket_id": 7001}).json()
+    assert run.get("memory_count") == 0  # tmp memory dir is empty

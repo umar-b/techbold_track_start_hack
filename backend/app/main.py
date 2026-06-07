@@ -84,6 +84,15 @@ def create_app() -> FastAPI:
         """Run counts by status + live SSH-session count, for an operations view."""
         return store.summary()
 
+    @app.get("/api/memory")
+    def memory_notes():
+        """The shared memory graph as note summaries (ADR-0001), newest first.
+
+        Each note is one resolved incident: title, tags, root-cause summary, and
+        links to related notes. Already redacted at write time.
+        """
+        return {"notes": memory_mod.list_notes()}
+
     @app.get("/api/me")
     def me(phoenix: PhoenixClient = Depends(get_phoenix)):
         return _erp(phoenix.me)
@@ -110,6 +119,8 @@ def create_app() -> FastAPI:
         store.audit(run["id"]).add("run_started", ticket_id=body.ticket_id,
                                    ticket_title=ticket.get("title", ""))
         _erp(phoenix.set_status, body.ticket_id, "PENDING")
+        # Record how many past incidents seeded this run (ADR-0009) so the UI can show it.
+        run["memory_count"] = len(memory_mod.retrieve_notes(ticket, system))
         transition(run, RunStatus.ANALYZING)  # immediate feedback; the worker takes over
         orch._submit(orch._analyze, run, ticket, system, memory_mod.retrieve(ticket, system))
         return run

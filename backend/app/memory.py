@@ -120,17 +120,12 @@ def _rank(ticket: Dict[str, Any], commands: List[str], notes: List[Dict[str, Any
     return [n for n, _ in hits[:limit]]
 
 
-def retrieve(ticket: Dict[str, Any], system: Dict[str, Any] | None = None,
-             limit: int = _MAX_RETRIEVE) -> str:
-    """Related past incidents as hypotheses-to-verify (ADR-0009), or "" if none.
-
-    Lexical prefilter over note tags/keywords, then a 1-hop expansion along the
-    top matches' wiki-links. Never raises — memory must not break the run.
-    """
+def _select(ticket: Dict[str, Any], limit: int) -> List[Dict[str, Any]]:
+    """Ranked related notes + 1-hop link expansion — the retrieval core. Never raises."""
     try:
         notes = _load_notes()
         if not notes:
-            return ""
+            return []
         by_id = {n["id"]: n for n in notes}
         top = _rank(ticket, [], notes, limit)
         seen = {n["id"] for n in top}
@@ -139,19 +134,48 @@ def retrieve(ticket: Dict[str, Any], system: Dict[str, Any] | None = None,
                 if link in by_id and link not in seen:
                     top.append(by_id[link])
                     seen.add(link)
-        if not top:
-            return ""
-        blocks = []
-        for n in top:
-            blocks.append(
-                f"- [{n.get('id')}] {n.get('title', '').strip()}\n"
-                f"  tags: {', '.join(n.get('tags', []))}\n"
-                f"  {_summary(n.get('body', ''))}"
-            )
-        return "\n".join(blocks)
+        return top
     except Exception:  # noqa: BLE001
         log.exception("memory retrieval failed")
+        return []
+
+
+def retrieve(ticket: Dict[str, Any], system: Dict[str, Any] | None = None,
+             limit: int = _MAX_RETRIEVE) -> str:
+    """Related past incidents as hypotheses-to-verify (ADR-0009), or "" if none.
+
+    Lexical prefilter over note tags/keywords, then a 1-hop expansion along the
+    top matches' wiki-links. Never raises — memory must not break the run.
+    """
+    top = _select(ticket, limit)
+    if not top:
         return ""
+    return "\n".join(
+        f"- [{n.get('id')}] {n.get('title', '').strip()}\n"
+        f"  tags: {', '.join(n.get('tags', []))}\n"
+        f"  {_summary(n.get('body', ''))}"
+        for n in top
+    )
+
+
+def retrieve_notes(ticket: Dict[str, Any], system: Dict[str, Any] | None = None,
+                   limit: int = _MAX_RETRIEVE) -> List[Dict[str, Any]]:
+    """The same selection as retrieve(), as structured summaries — powers the
+    per-run "seeded by N past incidents" UI chip."""
+    return [{"id": n.get("id"), "title": n.get("title", "").strip(),
+             "tags": n.get("tags", []), "root_cause": _summary(n.get("body", ""))}
+            for n in _select(ticket, limit)]
+
+
+def list_notes() -> List[Dict[str, Any]]:
+    """All memory notes as summaries (newest first) for the memory browser."""
+    out = [{"id": n.get("id"), "title": n.get("title", "").strip(),
+            "tags": n.get("tags", []), "os": n.get("os", ""),
+            "created_at": n.get("created_at", ""), "links": n.get("links", []),
+            "root_cause": _summary(n.get("body", ""))}
+           for n in _load_notes()]
+    out.sort(key=lambda n: n.get("created_at", ""), reverse=True)
+    return out
 
 
 def _summary(body: str) -> str:
