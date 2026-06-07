@@ -116,6 +116,17 @@ class PhoenixClient:
 
         return self._request("POST", "/api/v1/activities/create", json=payload)
 
+    def reset_me(self) -> Dict[str, Any]:
+        """Clear this team's activities and request a reboot (redeploy) of its VMs.
+
+        A development/eval-harness affordance, not a product action — it is wired
+        here (all ERP access is encapsulated in this client) but deliberately NOT
+        exposed as a backend HTTP route: nothing in the technician workspace should
+        be able to wipe activities and reboot every customer VM with one click.
+        """
+
+        return self._request("POST", "/api/v1/me/reset")
+
     def close(self) -> None:
         """Close the underlying HTTP client when tests or tools are finished."""
 

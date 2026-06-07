@@ -50,9 +50,15 @@ Hard rules:
   `sudoedit`/`systemctl edit`) or a pager (`less`/`more`/`man`) or `top` without `-b` — they hang
   or fail. To change a file use `sed -i`, `tee`, or a heredoc (`cat <<'EOF' > file`). Read files
   with `cat`/`grep`/`sed -n`.
-- After EDITING a unit file run `systemctl daemon-reload`; after editing a service's config or
-  code, you MUST `systemctl restart` (or reload) that service in the SAME plan — an on-disk change
-  has no effect until the process re-reads it. Verify with `is-enabled` + `status`/`ss`.
+- A config change only takes effect once the PROCESS re-reads it, which most edits do NOT trigger
+  on their own. `daemon-reload` reloads unit definitions into systemd, NOT a running service's
+  config/environment. `enable --now` enables a unit and starts it if stopped, but it does NOT
+  restart a service that is ALREADY running — so an env/config/drop-in change won't take effect
+  from `enable --now` alone. After editing a unit/drop-in/EnvironmentFile/app config of a service
+  that is already active, you MUST `systemctl restart <unit>` in the SAME plan (run
+  `daemon-reload` first if a unit or drop-in file changed). Then re-check the symptom AFTER the
+  restart (the failing log line, the listening port) — not the pre-restart state — and verify
+  persistence with `is-enabled`.
 - CRITICAL — plan steps run VERBATIM, each as a SEPARATE command, in order. A step CANNOT see
   another step's output, and shell state (cwd, variables) does NOT carry between steps. So you
   must discover every concrete value you need — exact paths, unit/service names, DB names, ports,
@@ -61,10 +67,30 @@ Hard rules:
   a placeholder like `/ACTUAL/PATH/...`, `<path>`, `<dbname>`, `CHANGEME`, or "from the previous
   step" — the literal text is what executes and will corrupt the file. When recreating a unit,
   copy the ExecStart/User/WorkingDirectory you actually read from the real unit or the app on disk.
-  If a value can only be computed at run time, put the `$(...)` substitution INSIDE that one command.
+  Put the LITERAL value you already discovered into the step (e.g. the exact port you READ from
+  `ss -tlnp`) — do NOT re-derive in the plan a value you have already seen. Each plan step is ONE
+  short single-line command: NEVER a multi-line script, a loop, or a nested `$(...)` port-scan
+  (those break — e.g. a multi-line `$(...)` inside `sed` corrupts the command). Reserve `$(...)`
+  for the rare value truly unknowable until run time, and then keep it to ONE trivial sub-command.
+- A value that must MATCH another component is read from THAT component, never guessed. When you
+  wire one service to another (a client/feeder's target endpoint, a proxy upstream, a connection
+  string), the target's real address/port comes from `ss -tlnp` (live listeners with their PIDs) or
+  that peer's config/ExecStart/app code — not a conventional default. A `Connection refused` /
+  `Errno 111` in a client's log means NOTHING is listening on the address:port it tried: find where
+  the target ACTUALLY listens with `ss -tlnp` and point the client there. A plausible-but-unverified
+  port (e.g. assuming 9000/8080) fails validation exactly like a placeholder — confirm it first.
 - After a validation FAILS, READ its output and the relevant `journalctl -u <unit>` to see WHAT is
   still wrong (a port, a permission, a connection refused, a missing dependency), then fix THAT
   specific thing. Do NOT propose a fresh guess or repeat the same step unchanged.
+- Before you PLAN, finish localising the cause — do not stop at the FIRST thing that looks wrong.
+  Read the failing component's config (its unit + drop-ins via `systemctl cat`, its EnvironmentFile,
+  the app config/file it loads) and RECONCILE its actual settings against what the ticket says the
+  working state is: the exact endpoint/port, hostname, path, or DB/table/role it must use. Faults
+  commonly CO-OCCUR — a service can be both not-enabled AND misconfigured; a value can be set in the
+  unit AND overridden in a drop-in; a write can fail on BOTH a missing grant and a wrong path — so a
+  plan that fixes only the first symptom you noticed will fail validation. Confirm every concrete
+  value (real unit/db/table/role names, the real port/path/host) in read-only diagnosis FIRST, then
+  put ALL the needed changes into ONE plan with the real values already filled in.
 - Converge once you have identified the SPECIFIC failing component (you confirmed its real name and
   read its status/logs), propose a `plan` to fix THAT — do not keep enumerating services. A
   minimal, evidence-based fix is right; the technician approves it and validation confirms it or

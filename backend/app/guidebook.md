@@ -15,6 +15,8 @@ Method, not recipes (ADR-0003). Use this to reason; do not blindly apply steps.
 A fix must survive a reboot. Rebooting these VMs **redeploys them to the broken state**, so
 never reboot to "test"; verify persistence cheaply instead:
 - Service should be **enabled**, not just started: `systemctl enable --now <svc>`; check `systemctl is-enabled`.
+  Note `enable --now` does NOT restart an already-running service, and `daemon-reload` only reloads
+  unit files — a config/env/drop-in change needs `systemctl restart <svc>` to actually take effect.
 - Mounts belong in `/etc/fstab`; firewall rules must be persisted; config changes written to disk.
 - Fix the *generator* of a recurring problem (e.g. logrotate), not just its current effect.
 
@@ -35,8 +37,10 @@ one of these.
 - **DB write fails / grants** — read works, insert fails. Check disk first, then the role's
   privileges. `GRANT` the missing privilege to the app role — **do not** reinit the DB or run the
   app as a DB superuser to bypass permissions (hard fail).
-- **Stopped collector / cron** — data not updating though the app is up. Find the feeder
-  service/cron, restart **and enable** it; check timestamps.
+- **Stopped collector / cron** — data not updating though the app is up. The feeder may be stopped,
+  OR running but unable to deliver (points at the wrong endpoint/port, or its receiver is down).
+  Check the feeder's target + logs and where its sink actually listens (`ss -tlnp`); fix the config,
+  then **restart** the feeder (a running one won't pick up a new endpoint) and **enable** it.
 
 ## Safety (code-enforced anyway — ADR-0002/0004)
 Never: blanket `chmod -R 777` / recursive `chown` / `rm -rf` on system roots; drop/reinit a
