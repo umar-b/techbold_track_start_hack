@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Loader2, Server } from "lucide-react";
-import type { CustomerSystem, Ticket } from "../types";
+import { ArrowLeft, Loader2, Server, CircleCheck } from "lucide-react";
+import type { Activity, CustomerSystem, Ticket } from "../types";
 import { api, getErrorMessage } from "../api";
+import { formatRelative } from "../lib/format";
 
 type Props = {
   ticketId: number;
@@ -11,6 +12,7 @@ type Props = {
 
 export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
   const [data, setData] = useState<{ ticket: Ticket; system: CustomerSystem } | null>(null);
+  const [activity, setActivity] = useState<Activity | null>(null);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -20,6 +22,17 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
     api.getTicket(ticketId)
       .then((d) => { if (active) setData(d); })
       .catch((e) => { if (active) setError(getErrorMessage(e)); });
+    return () => { active = false; };
+  }, [ticketId, reloadKey]);
+
+  // Show the latest resolution when a solved ticket is reopened. Best-effort —
+  // a failure here must not block the ticket view.
+  useEffect(() => {
+    let active = true;
+    setActivity(null);
+    api.ticketActivities(ticketId)
+      .then((d) => { if (active) setActivity(d.activities[0] ?? null); })
+      .catch(() => { /* no resolution to show */ });
     return () => { active = false; };
   }, [ticketId, reloadKey]);
 
@@ -62,6 +75,8 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
       <button type="button" className="link" onClick={onBack}>
         <ArrowLeft size={13} /> All tickets
       </button>
+
+      {activity && <ResolutionPanel activity={activity} />}
 
       <div className="detail-grid">
         <article>
@@ -116,5 +131,40 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
         </aside>
       </div>
     </section>
+  );
+}
+
+const RESOLUTION_FIELDS: { key: keyof Activity; label: string }[] = [
+  { key: "summary", label: "Summary" },
+  { key: "root_cause", label: "Root cause" },
+  { key: "actions_taken", label: "Actions taken" },
+  { key: "commands_summary", label: "Commands" },
+  { key: "validation_result", label: "Validation" },
+];
+
+function ResolutionPanel({ activity }: { activity: Activity }) {
+  const rows = RESOLUTION_FIELDS.filter((f) => {
+    const v = activity[f.key];
+    return typeof v === "string" && v.trim();
+  });
+  const mono = new Set<keyof Activity>(["commands_summary"]);
+  return (
+    <div className="resolution">
+      <div className="resolution-head">
+        <span className="resolution-icon"><CircleCheck size={15} /></span>
+        <span className="resolution-title">Resolution</span>
+        {activity.end_datetime && (
+          <span className="muted resolution-when">solved {formatRelative(activity.end_datetime)}</span>
+        )}
+      </div>
+      <dl className="resolution-dl">
+        {rows.map((f) => (
+          <div key={String(f.key)} className="resolution-row">
+            <dt>{f.label}</dt>
+            <dd className={mono.has(f.key) ? "mono" : undefined}>{activity[f.key] as string}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

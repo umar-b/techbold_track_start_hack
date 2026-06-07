@@ -614,6 +614,47 @@ p { margin: 0; }
 .ticket-customer { color: var(--ink-soft); font-size: 0.875rem; }
 
 /* ============================================================
+   Resolution panel (solved ticket, shown on reopen)
+   ============================================================ */
+.resolution {
+  margin-top: 0.75rem;
+  border: 1px solid var(--safe-border);
+  border-left: 3px solid var(--safe);
+  background: var(--safe-bg);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+.resolution-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.resolution-icon { display: flex; color: var(--safe); }
+.resolution-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--safe);
+}
+.resolution-when { margin-left: auto; font-size: 0.78rem; }
+.resolution-dl { margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.resolution-row { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.85rem; align-items: baseline; }
+.resolution-row dt {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.resolution-row dd { margin: 0; font-size: 0.9rem; color: var(--ink); line-height: 1.5; }
+.resolution-row dd.mono { font-family: var(--mono); font-size: 0.8rem; word-break: break-word; }
+@media (max-width: 600px) {
+  .resolution-row { grid-template-columns: 1fr; gap: 0.15rem; }
+}
+
+/* ============================================================
    Ticket detail
    ============================================================ */
 .detail-grid {

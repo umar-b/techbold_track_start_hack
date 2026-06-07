@@ -137,3 +137,17 @@ export interface ActivityDraft {
   commands_summary: string;
   validation_result: string;
 }
+
+// A submitted activity as mirrored locally (what solved a ticket).
+export interface Activity {
+  id?: number | null;
+  ticket_id: number;
+  start_datetime?: string;
+  end_datetime?: string;
+  description?: string;
+  summary?: string;
+  root_cause?: string;
+  actions_taken?: string;
+  commands_summary?: string;
+  validation_result?: string;
+}
