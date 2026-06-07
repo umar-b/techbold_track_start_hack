@@ -4,6 +4,8 @@ import { ArrowLeft, Check, X, Loader2, Terminal, Zap, ShieldAlert, TriangleAlert
 import type { CustomerSystem, PlanStep, PlanStepEdit, Step, Ticket } from "../types";
 import { useRun } from "../hooks/useRun";
 import { RiskBadge } from "./RiskBadge";
+import { CopyButton } from "./CopyButton";
+import { formatDuration } from "../lib/format";
 
 type Props = {
   ticket: Ticket;
@@ -173,6 +175,7 @@ function StepView({ step }: { step: Step }) {
   const failed = step.status === "failed";
   const running = step.status === "proposed";
   const stateClass = blocked || failed ? "cmd-block--rejected" : step.status === "executed" ? "cmd-block--done" : "";
+  const duration = formatDuration(step.result?.duration_ms);
 
   return (
     <div className="chat-msg-agent chat-msg-cmd-wrap">
@@ -192,9 +195,13 @@ function StepView({ step }: { step: Step }) {
           ) : (
             <span className="badge badge-safe">AUTO</span>
           )}
-          {running && <Loader2 size={12} className="spin" style={{ marginLeft: "auto", color: "var(--muted)" }} />}
-          {step.status === "executed" && <Check size={12} style={{ marginLeft: "auto", color: "var(--safe)" }} />}
-          {(blocked || failed) && <X size={12} style={{ marginLeft: "auto", color: "var(--danger)" }} />}
+          <div className="cmd-block-meta">
+            {duration && <span className="cmd-duration" title="Execution time">{duration}</span>}
+            <CopyButton text={step.command} />
+            {running && <Loader2 size={12} className="spin" style={{ color: "var(--muted)" }} />}
+            {step.status === "executed" && <Check size={12} style={{ color: "var(--safe)" }} />}
+            {(blocked || failed) && <X size={12} style={{ color: "var(--danger)" }} />}
+          </div>
         </div>
         <code className="cmd-block-code">{step.command}</code>
         {step.rationale && <p className="cmd-block-rationale">{step.rationale}</p>}
