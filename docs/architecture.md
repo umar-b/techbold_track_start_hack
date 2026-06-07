@@ -23,8 +23,8 @@ flowchart LR
   end
 
   subgraph Backend["Backend (FastAPI) — holds token + SSH key"]
-    API["API layer: REST actions + SSE events"]
-    Loop["Agent loop (single planning agent) — ADR-0007"]
+    API["API layer (main.py): thin REST handlers + SSE + /api/runs,/api/stats"]
+    Loop["orchestrator.py: run loop (single planning agent) — ADR-0007"]
     LLM["llm.py (Azure OpenAI, native tools / JSON fallback) — ADR-0006"]
     Safety["safety: SAFE / GATED / BLOCKED + blocklist — ADR-0002, 0004"]
     SSH["ssh_runner (paramiko, timeouts)"]

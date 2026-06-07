@@ -36,7 +36,8 @@ Safety, secret-redaction, and fix-persistence are enforced in **code**, not left
 
 ```
 backend/app/
-  main.py            FastAPI API + the propose→approve→execute→verify→document loop
+  main.py            thin FastAPI handlers (validate, talk to ERP, delegate) + SSE
+  orchestrator.py    the propose→approve→execute→verify→replan run loop + idle-session reaper
   config.py          typed settings (env / .env)
   phoenix_client.py  ERP client (timeouts, 5xx-only retry, typed errors)
   ssh_runner.py      paramiko runner; per-VM key resolver; connection reused per run
@@ -95,7 +96,7 @@ python scripts/smoke/check_ssh.py            # SSH into the first ticket's VM (u
 python scripts/smoke/check_azure.py          # chat + JSON mode on the deployment
 
 # 2) Backend tests (no network — mocked)
-cd backend && .venv/bin/python -m pytest -q  # 95 tests
+cd backend && .venv/bin/python -m pytest -q  # 138 tests
 
 # 3) Frontend typecheck
 cd frontend && npx tsc --noEmit
@@ -109,8 +110,10 @@ cd frontend && npx tsc --noEmit
   `enable`d, config on disk), validated with the provided `public-test.sh`.
 - **C (safety)** — code-enforced `SAFE/GATED/BLOCKED` tiers, secret-read blocking, append-only
   audit log, redaction on every output/activity, plan-level human approval.
-- **D (UX)** — sortable ticket list, detail + system info, live step log with risk badges,
-  approve/reject/abort.
+- **D (UX)** — searchable + filterable ticket list (status/priority over the server sort),
+  detail + system info, live step log with risk badges, per-step timing + copy-command, a live
+  SSE connection indicator, a run timer, keyboard shortcuts (A/R/Esc), toasts, and
+  approve/edit/reject/abort.
 - **E (engineering)** — separated modules, this README, runnable tests, timeouts + bounded
   retries, `.env.example`, no secrets in the repo.
 
