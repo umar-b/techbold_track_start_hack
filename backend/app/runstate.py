@@ -33,7 +33,7 @@ _TRANSITIONS: Dict[RunStatus, Set[RunStatus]] = {
     RunStatus.ANALYZING: {RunStatus.AWAITING_PLAN_APPROVAL, RunStatus.FINISHED, RunStatus.ESCALATED},
     RunStatus.AWAITING_PLAN_APPROVAL: {RunStatus.EXECUTING, RunStatus.ANALYZING},
     RunStatus.EXECUTING: {RunStatus.VERIFYING},
-    RunStatus.VERIFYING: {RunStatus.FINISHED, RunStatus.ANALYZING},
+    RunStatus.VERIFYING: {RunStatus.FINISHED, RunStatus.ANALYZING, RunStatus.ESCALATED},
     RunStatus.FINISHED: set(),
     RunStatus.ESCALATED: set(),
     RunStatus.ABORTED: set(),

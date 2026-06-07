@@ -221,7 +221,7 @@ def test_repeated_gated_diagnostic_does_not_loop(env, monkeypatch):
     # must also RECEIVE its rejected attempts as feedback rather than flying blind.
     seen_rejected = []
 
-    def fake(ticket, system, history, memory="", must_plan=False, rejected=None):
+    def fake(ticket, system, history, memory="", must_plan=False, rejected=None, force=False):
         seen_rejected.append(len(rejected or []))
         return {"action": "diagnose", "command": "sudo /opt/hackathon/public-test.sh",
                 "rationale": "validate first"}
@@ -376,3 +376,26 @@ def test_endless_safe_diagnostics_are_forced_to_a_decision(env, monkeypatch):
     assert run["status"] == "escalated"
     executed = [s for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed"]
     assert len(executed) <= orch_mod.DIAGNOSE_FORCE_LIMIT  # bounded; never reaches the hard limit
+
+
+def test_repeated_failed_fix_escalates_after_max_attempts(env, monkeypatch):
+    # The agent keeps proposing plans whose validation fails. It must escalate after
+    # MAX_FIX_ATTEMPTS rather than replanning forever (regression: ticket 7005 — ~6 cycles).
+    client, _ = env
+    monkeypatch.setattr(orch_mod.agent, "propose_action",
+                        lambda *a, **k: {"action": "plan", "root_cause": "x",
+                                         "steps": [{"command": "systemctl restart svc"}],
+                                         "validation": ["sudo /opt/hackathon/public-test.sh"]})
+    monkeypatch.setattr(orch_mod, "_execute",
+                        lambda run, system, command, timeout=None: CommandResult("", "still failing", 1, 5))
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+    for _ in range(orch_mod.MAX_FIX_ATTEMPTS + 3):
+        r = client.get(f"/api/runs/{rid}").json()
+        if r["status"] != "awaiting_plan_approval":
+            break
+        client.post(f"/api/runs/{rid}/approve", json={})
+
+    final = client.get(f"/api/runs/{rid}").json()
+    assert final["status"] == "escalated"
+    fixes = [s for s in final["steps"] if s["kind"] == "fix"]
+    assert 0 < len(fixes) <= orch_mod.MAX_FIX_ATTEMPTS

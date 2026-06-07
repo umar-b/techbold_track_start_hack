@@ -42,13 +42,25 @@ Hard rules:
   wrapped ones must wait for manual approval. `sudo` is fine and available (passwordless).
 - `diagnose` is READ-ONLY. Any command that changes state (restart/start/enable/edit/install/
   chown/chmod) MUST go in a `plan`, never in a diagnose step.
-- Converge: after 2–4 diagnostics that localise the cause, propose a `plan`. The moment you find
-  a plausible culprit — a unit that is inactive/failed/not-enabled, a clear error in the logs, a
-  missing/wrong config or permission — STOP probing and propose a plan to fix THAT. Do not keep
-  enumerating services or hunting for more evidence; a wrong-but-reasonable plan is fine because
-  the technician approves it and validation (`public-test.sh`) confirms it or you replan. Choose
-  `finish` ONLY when the evidence shows the issue is resolved (the symptom is gone or the
-  validation passes) — never while the reported problem is still failing or unverified.
+- NEVER invent a unit, service, file, path, or port name. Act ONLY on names you have actually
+  seen in command output (`systemctl list-units`, `systemctl list-unit-files`, `find`, `ss -tlnp`,
+  a config you cat'd). If `systemctl` reports "Unit X not found" or exits 4, or `enable`/`start`
+  fails, the name was WRONG — re-list the units and use the real one; do not guess a variant.
+- Commands run NON-INTERACTIVELY over SSH (no TTY). Never use an editor (`vi`/`vim`/`nano`/
+  `sudoedit`/`systemctl edit`) or a pager (`less`/`more`/`man`) or `top` without `-b` — they hang
+  or fail. To change a file use `sed -i`, `tee`, or a heredoc (`cat <<'EOF' > file`). Read files
+  with `cat`/`grep`/`sed -n`.
+- After EDITING a unit file run `systemctl daemon-reload`; after editing a service's config or
+  code, you MUST `systemctl restart` (or reload) that service in the SAME plan — an on-disk change
+  has no effect until the process re-reads it. Verify with `is-enabled` + `status`/`ss`.
+- After a validation FAILS, READ its output and the relevant `journalctl -u <unit>` to see WHAT is
+  still wrong (a port, a permission, a connection refused, a missing dependency), then fix THAT
+  specific thing. Do NOT propose a fresh guess or repeat the same step unchanged.
+- Converge once you have identified the SPECIFIC failing component (you confirmed its real name and
+  read its status/logs), propose a `plan` to fix THAT — do not keep enumerating services. A
+  minimal, evidence-based fix is right; the technician approves it and validation confirms it or
+  you replan. Choose `finish` ONLY when the evidence shows the issue is resolved (the symptom is
+  gone or the validation passes) — never while the reported problem is still failing or unverified.
 
 Respond ONLY with a single JSON object. Include just the keys for the chosen action:
 - diagnose: {"action":"diagnose","command":"<one read-only shell command>","rationale":"<why>"}
@@ -111,7 +123,7 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
                    must_plan: bool = False,
                    rejected: Optional[List[Dict[str, Any]]] = None,
-                   feedback: str = "") -> Dict[str, Any]:
+                   feedback: str = "", force: bool = False) -> Dict[str, Any]:
     related = ("RELATED PAST INCIDENTS (verify against live evidence, do not assume):\n" + memory) if memory else ""
     # Free-text steer from the technician on the previous plan (the "discuss" loop):
     # a strong, explicit instruction to adjust the next plan accordingly.
@@ -133,20 +145,29 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
             "propose them again — run a read-only probe instead, or put the change in a plan:\n"
             f"{listed}\n\n"
         )
-    closing = (
-        "STOP diagnosing — you have enough evidence. Respond NOW with action=plan: your single "
-        "best root-cause hypothesis and the MINIMAL ordered fix steps (start/enable the "
-        "responsible unit with `systemctl enable --now`, repair/write its config on disk, fix "
-        "permissions/ownership on the specific path), plus a \"validation\" list that includes "
-        "`sudo /opt/hackathon/public-test.sh`. If you are not fully certain, propose your MOST "
-        "LIKELY fix anyway — the technician approves every step and validation confirms it (or you "
-        "replan). Choose action=finish ONLY if the system is already healthy. Do NOT return another "
-        "diagnose; a diagnose now will be discarded."
-        if must_plan else
-        "Propose the next single action as JSON. Once a diagnostic localises the cause (an inactive/"
-        "failed/not-enabled unit, a clear error in the logs, a missing/edited config), STOP probing "
-        "and respond with action=plan — do not keep enumerating services. Otherwise diagnose."
-    )
+    if force:
+        closing = (
+            "STOP. This is your LAST round — a diagnose will be discarded. Respond NOW with "
+            "action=plan using the evidence you already have: the MINIMAL fix for the specific "
+            "failing component you identified (enable/start the real unit, repair its on-disk "
+            "config + restart it, fix the exact permission/port), plus a \"validation\" list that "
+            "includes `sudo /opt/hackathon/public-test.sh`. Use action=finish only if already healthy."
+        )
+    elif must_plan:
+        closing = (
+            "You should be converging. If you have identified the SPECIFIC failing component "
+            "(confirmed its REAL name and read its status/logs), respond with action=plan now — a "
+            "minimal evidence-based fix plus a \"validation\" list including "
+            "`sudo /opt/hackathon/public-test.sh`. Only if you genuinely cannot yet name the failing "
+            "component, run ONE more targeted read-only probe. action=finish only if already healthy."
+        )
+    else:
+        closing = (
+            "Propose the next single action as JSON. Once a diagnostic localises the cause (a NAMED "
+            "unit that is inactive/failed/not-enabled, a clear error in the logs, a missing/wrong "
+            "config or permission), STOP probing and respond with action=plan. Otherwise diagnose "
+            "ONE read-only command."
+        )
     user = (
         f"GUIDEBOOK:\n{load_guidebook()}\n\n"
         f"TICKET #{ticket.get('id')}: {ticket.get('title','')}\n{ticket.get('description','')}\n\n"

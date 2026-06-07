@@ -46,6 +46,11 @@ DIAGNOSE_HARD_LIMIT = 10
 # (e.g. the validation script) every iteration until the hard limit, doing no useful work.
 REJECTED_DIAGNOSE_LIMIT = 2
 
+# How many fix→verify cycles to attempt before escalating. Without this the agent can
+# keep proposing plausible-but-wrong plans indefinitely (each human-approved), as on
+# ticket 7005. After this many failed validations, hand to the technician with the evidence.
+MAX_FIX_ATTEMPTS = 5
+
 # The run loop advances on a background worker so POST handlers return immediately and
 # the browser sees diagnostics stream in over SSE (ADR-0008). `_submit` is overridden to
 # run inline in tests.
@@ -215,7 +220,7 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
         force = executed >= DIAGNOSE_FORCE_LIMIT or attempts >= DIAGNOSE_HARD_LIMIT
         must_plan = force or executed >= DIAGNOSE_SOFT_LIMIT or len(rejected) >= REJECTED_DIAGNOSE_LIMIT
         action = agent.propose_action(ticket, system, _executed_history(run), memory=mem,
-                                      must_plan=must_plan, rejected=rejected)
+                                      must_plan=must_plan, rejected=rejected, force=force)
         kind = action.get("action")
         if kind == "plan":
             _set_plan(run, action)
@@ -269,6 +274,7 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
     plan = run["plan"] or {}
     steps = edited_steps if edited_steps is not None else plan.get("steps", [])
     validation = plan.get("validation", []) or []
+    run["fix_attempts"] = run.get("fix_attempts", 0) + 1
     transition(run, RunStatus.EXECUTING)
     audit.add("plan_approved", steps=len(steps))
     fixes_ok = True
@@ -294,6 +300,10 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
         audit.add("verified_resolved")
     else:
         audit.add("verification_failed")
+        if run.get("fix_attempts", 0) >= MAX_FIX_ATTEMPTS:
+            _escalate(run, f"the fix did not pass validation after {run['fix_attempts']} attempts "
+                           "— handing to the technician with the evidence gathered")
+            return
         _replan(run, ticket, system)
 
 
