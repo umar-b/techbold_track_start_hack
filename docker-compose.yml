@@ -9,6 +9,15 @@ services:
     volumes:
       # Your SSH private key(s). Put your .pem in ./keys (git-ignored).
       - ./keys:/keys:ro
+      # Persist durable data on the host so it survives container recreation
+      # (`compose down`/`up`, `up --build`). Without these, memory notes, the
+      # resolution mirror, and per-run audit logs live only in the container's
+      # writable layer and are lost the moment the container is replaced.
+      #   AUDIT_DIR  (default data/audit)     -> audit logs + activities/<ticket>.jsonl
+      #   MEMORY_DIR (default backend/memory) -> the committed markdown-graph brain
+      # WORKDIR is /app, so the relative defaults resolve to these paths.
+      - ./data:/app/data
+      - ./backend/memory:/app/backend/memory
     extra_hosts:
       # Lets the container reach a Phoenix mock running on the host, if you run one.
       - "host.docker.internal:host-gateway"
