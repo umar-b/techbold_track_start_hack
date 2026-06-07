@@ -165,8 +165,16 @@ def _segment_safe(seg: str) -> bool:
         return False
     sub = toks[1] if len(toks) > 1 else ""
     if binexe == "systemctl":
-        return sub in {"status", "is-active", "is-enabled", "is-failed", "list-units",
-                       "list-unit-files", "list-timers", "show", "cat", "--version", "--failed"}
+        # The verb is the first NON-option token; options may precede it
+        # (`systemctl --type=service --state=running` , `systemctl --no-pager status x`).
+        verb = next((t for t in toks[1:] if not t.startswith("-")), "")
+        # No verb at all -> an implied `list-units` (read-only). Otherwise allow the
+        # read-only verbs only; anything else (start/stop/enable/restart/…) is GATED.
+        return verb == "" or verb in {
+            "status", "is-active", "is-enabled", "is-failed", "is-system-running",
+            "list-units", "list-unit-files", "list-timers", "list-sockets",
+            "list-dependencies", "show", "cat", "show-environment",
+        }
     if binexe == "service":
         return sub == "status" or s.endswith(" status")
     if binexe == "sed":

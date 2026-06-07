@@ -42,10 +42,13 @@ Hard rules:
   wrapped ones must wait for manual approval. `sudo` is fine and available (passwordless).
 - `diagnose` is READ-ONLY. Any command that changes state (restart/start/enable/edit/install/
   chown/chmod) MUST go in a `plan`, never in a diagnose step.
-- Converge: after 2–4 diagnostics that localise the cause, propose a `plan`. Do not diagnose
-  indefinitely. Choose `finish` ONLY when the evidence shows the issue is resolved (the symptom
-  is gone or the validation/`public-test.sh` passes) — never while the reported problem is still
-  failing or unverified.
+- Converge: after 2–4 diagnostics that localise the cause, propose a `plan`. The moment you find
+  a plausible culprit — a unit that is inactive/failed/not-enabled, a clear error in the logs, a
+  missing/wrong config or permission — STOP probing and propose a plan to fix THAT. Do not keep
+  enumerating services or hunting for more evidence; a wrong-but-reasonable plan is fine because
+  the technician approves it and validation (`public-test.sh`) confirms it or you replan. Choose
+  `finish` ONLY when the evidence shows the issue is resolved (the symptom is gone or the
+  validation passes) — never while the reported problem is still failing or unverified.
 
 Respond ONLY with a single JSON object. Include just the keys for the chosen action:
 - diagnose: {"action":"diagnose","command":"<one read-only shell command>","rationale":"<why>"}
@@ -131,11 +134,18 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
             f"{listed}\n\n"
         )
     closing = (
-        "You now have enough evidence. Respond with action=plan — an ordered list of fix steps "
-        "plus validation commands. Use action=finish ONLY if the system is already healthy and "
-        "needs no change. Do NOT diagnose further."
+        "STOP diagnosing — you have enough evidence. Respond NOW with action=plan: your single "
+        "best root-cause hypothesis and the MINIMAL ordered fix steps (start/enable the "
+        "responsible unit with `systemctl enable --now`, repair/write its config on disk, fix "
+        "permissions/ownership on the specific path), plus a \"validation\" list that includes "
+        "`sudo /opt/hackathon/public-test.sh`. If you are not fully certain, propose your MOST "
+        "LIKELY fix anyway — the technician approves every step and validation confirms it (or you "
+        "replan). Choose action=finish ONLY if the system is already healthy. Do NOT return another "
+        "diagnose; a diagnose now will be discarded."
         if must_plan else
-        "Propose the next single action as JSON: diagnose while still investigating, otherwise plan."
+        "Propose the next single action as JSON. Once a diagnostic localises the cause (an inactive/"
+        "failed/not-enabled unit, a clear error in the logs, a missing/edited config), STOP probing "
+        "and respond with action=plan — do not keep enumerating services. Otherwise diagnose."
     )
     user = (
         f"GUIDEBOOK:\n{load_guidebook()}\n\n"

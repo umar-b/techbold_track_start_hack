@@ -364,3 +364,15 @@ def test_submit_activity_is_readable_per_ticket(env, monkeypatch):
     assert body["ticket_id"] == 7001
     assert body["activities"] and body["activities"][0]["summary"] == "Restored nginx"
     assert body["activities"][0]["root_cause"] == "unit was disabled"
+
+
+def test_endless_safe_diagnostics_are_forced_to_a_decision(env, monkeypatch):
+    # A model that keeps probing read-only forever must be forced to a decision and
+    # escalate, NOT burn every attempt (regression: ticket 7005 — 9 probes, no plan).
+    client, _ = env
+    monkeypatch.setattr(orch_mod.agent, "propose_action",
+                        lambda *a, **k: {"action": "diagnose", "command": "systemctl status x", "rationale": "probe"})
+    run = client.post("/api/runs", json={"ticket_id": 7001}).json()
+    assert run["status"] == "escalated"
+    executed = [s for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed"]
+    assert len(executed) <= orch_mod.DIAGNOSE_FORCE_LIMIT  # bounded; never reaches the hard limit

@@ -31,8 +31,15 @@ from .ssh_runner import SSHError
 
 log = logging.getLogger("api")
 
-# Analysis converges to a plan: force a plan after the soft limit, escalate at the hard limit.
-DIAGNOSE_SOFT_LIMIT = 6
+# Analysis converges to a plan in stages:
+#   SOFT  — start telling the model "you have enough evidence, plan now"; it may still run a
+#           couple more read-only probes if it's closing in on the cause.
+#   FORCE — stop probing: make ONE last plan request and accept plan/finish, else escalate.
+#           Without this the model can spend EVERY attempt on read-only diagnostics and never
+#           commit to a fix (observed on ticket 7005: 9 probes, no plan, then hard-limit escalate).
+#   HARD  — absolute attempt cap; also covers the all-failing/unreachable case.
+DIAGNOSE_SOFT_LIMIT = 4
+DIAGNOSE_FORCE_LIMIT = 7
 DIAGNOSE_HARD_LIMIT = 10
 # After this many diagnostics are REJECTED (proposed but not read-only), stop asking for
 # another diagnostic and force a plan — otherwise the agent re-proposes the same GATED command
@@ -200,15 +207,13 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
         executed = sum(1 for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "executed")
         attempts = sum(1 for s in run["steps"] if s["kind"] == "diagnose")
         rejected = [s for s in run["steps"] if s["kind"] == "diagnose" and s["status"] == "rejected"]
-        # Bound by TOTAL diagnostic attempts so an unreachable host (every diagnostic
-        # failing, never "executed") still terminates instead of looping forever.
-        if attempts >= DIAGNOSE_HARD_LIMIT:
-            _escalate(run, "could not converge on a plan after diagnostics")
-            return
-        # Force a plan once we have enough evidence OR the agent keeps proposing non-read-only
-        # "diagnostics": repeated rejections mean it wants to change state, which belongs in a
-        # plan — not in a diagnose step re-proposed forever.
-        must_plan = executed >= DIAGNOSE_SOFT_LIMIT or len(rejected) >= REJECTED_DIAGNOSE_LIMIT
+        # FORCE a decision once we have enough evidence OR have tried too many times: the next
+        # propose() is the model's last chance to plan/finish — a further diagnose is refused so
+        # it can't keep probing forever (the unreachable host, every diagnostic failing, also
+        # lands here via attempts). SOFT just turns on the "plan now" nudge while still allowing
+        # a couple more probes. Repeated rejections (non-read-only) also force the issue.
+        force = executed >= DIAGNOSE_FORCE_LIMIT or attempts >= DIAGNOSE_HARD_LIMIT
+        must_plan = force or executed >= DIAGNOSE_SOFT_LIMIT or len(rejected) >= REJECTED_DIAGNOSE_LIMIT
         action = agent.propose_action(ticket, system, _executed_history(run), memory=mem,
                                       must_plan=must_plan, rejected=rejected)
         kind = action.get("action")
@@ -227,6 +232,11 @@ def _analyze(run, ticket, system, mem: str = "") -> None:
                       status="done")
             transition(run, RunStatus.FINISHED)
             audit.add("agent_reports_resolved", summary=action.get("summary", ""))
+            return
+        # The model wants to diagnose again, but it has had its forced chance to plan — stop
+        # here and hand to the technician with the evidence gathered, rather than probing on.
+        if force:
+            _escalate(run, "could not converge on a plan after diagnostics")
             return
         # diagnose — read-only only
         cmd = action.get("command", "")

@@ -147,3 +147,17 @@ def test_allowed_convenience_flag():
 
     assert check_command("uname -a").allowed is True
     assert check_command("rm -rf /").allowed is False
+
+
+def test_systemctl_listing_with_leading_options_is_safe():
+    # `systemctl --type=service --state=running,failed` is an implied list-units (read-only);
+    # leading options must not be mistaken for a state-changing subcommand (regression: ticket 7005).
+    assert check_command("systemctl --type=service --state=running,failed --no-pager").tier is RiskTier.SAFE
+    assert check_command("systemctl --failed").tier is RiskTier.SAFE
+    assert check_command("systemctl --no-pager status nginx").tier is RiskTier.SAFE
+
+
+def test_systemctl_state_change_is_still_gated():
+    assert check_command("systemctl enable --now nginx").tier is RiskTier.GATED
+    assert check_command("systemctl restart nginx").tier is RiskTier.GATED
+    assert check_command("systemctl daemon-reload").tier is RiskTier.GATED
