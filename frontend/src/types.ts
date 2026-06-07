@@ -82,6 +82,7 @@ export interface Plan {
   root_cause: string;
   steps: PlanStep[];
   validation: string[];
+  mode?: "fix" | "diagnostic";
 }
 
 export interface Run {

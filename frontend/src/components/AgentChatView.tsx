@@ -103,6 +103,7 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
                 rootCause={plan.root_cause}
                 steps={plan.steps}
                 validation={plan.validation}
+                mode={plan.mode}
                 busy={acting}
                 onApprove={approve}
                 onReject={reject}
@@ -296,15 +297,17 @@ function StepView({ step }: { step: Step }) {
 }
 
 function PlanApproval({
-  rootCause, steps, validation, busy, onApprove, onReject,
+  rootCause, steps, validation, mode, busy, onApprove, onReject,
 }: {
   rootCause: string;
   steps: PlanStep[];
   validation: string[];
+  mode?: "fix" | "diagnostic";
   busy: boolean;
   onApprove: (editedSteps?: PlanStepEdit[]) => void;
   onReject: (feedback?: string) => void;
 }) {
+  const isDiagnostic = mode === "diagnostic";
   const [editing, setEditing] = useState(false);
   const [cmds, setCmds] = useState<string[]>(() => steps.map((s) => s.command));
   const [discussOpen, setDiscussOpen] = useState(false);
@@ -343,9 +346,13 @@ function PlanApproval({
       <div className="plan-card">
         <div className="plan-head">
           <span className="badge badge-gated plan-badge">
-            <ShieldAlert size={11} />FIX PLAN{dirty ? " · edited" : ""}
+            <ShieldAlert size={11} />{isDiagnostic ? "DIAGNOSTIC" : "FIX PLAN"}{dirty ? " · edited" : ""}
           </span>
-          <span className="plan-title">Proposed fix — your approval required</span>
+          <span className="plan-title">
+            {isDiagnostic
+              ? "The agent needs to run this to gather evidence — approve?"
+              : "Proposed fix — your approval required"}
+          </span>
           <button
             type="button"
             className="link plan-edit-toggle"
@@ -358,10 +365,12 @@ function PlanApproval({
           </button>
         </div>
 
-        <div className="plan-rootcause">
-          <span className="plan-rootcause-label">Root cause</span>
-          <p>{rootCause || "—"}</p>
-        </div>
+        {!isDiagnostic && (
+          <div className="plan-rootcause">
+            <span className="plan-rootcause-label">Root cause</span>
+            <p>{rootCause || "—"}</p>
+          </div>
+        )}
 
         <ol id="plan-steps" className="plan-steps2">
           {steps.map((st, i) => (
@@ -391,6 +400,7 @@ function PlanApproval({
                 ) : (
                   <code className="cmd-block-code">{command(i)}</code>
                 )}
+                {st.rationale && <span className="cmd-block-rationale" style={{ margin: 0, padding: 0 }}>{st.rationale}</span>}
                 {st.expected && <span className="expected">Expected: {st.expected}</span>}
               </div>
             </li>
@@ -410,6 +420,7 @@ function PlanApproval({
           <p className="plan-note">Edited commands are still safety-checked before they run.</p>
         )}
 
+        {!isDiagnostic && (
         <div className="plan-discuss">
           <button
             type="button"
@@ -444,16 +455,17 @@ function PlanApproval({
             </div>
           )}
         </div>
+        )}
 
         <div className="cmd-block-actions plan-actions">
           <button type="button" className="btn btn-gold cmd-approve-btn" data-shortcut="approve"
-                  aria-label={dirty ? "Approve the edited fix plan" : "Approve the proposed fix plan"}
+                  aria-label={dirty ? "Approve the edited command(s)" : (isDiagnostic ? "Approve and run the diagnostic" : "Approve the proposed fix plan")}
                   disabled={busy || hasEmpty} onClick={handleApprove}>
-            {busy ? "Running…" : dirty ? "Approve edited plan" : "Approve plan"}
+            {busy ? "Running…" : isDiagnostic ? (dirty ? "Run edited command" : "Approve & run") : (dirty ? "Approve edited plan" : "Approve plan")}
           </button>
           <button type="button" className="btn btn-danger" data-shortcut="reject"
-                  aria-label="Reject the plan and replan" disabled={busy} onClick={() => onReject()}>
-            Reject — replan
+                  aria-label={isDiagnostic ? "Skip this diagnostic" : "Reject the plan and replan"} disabled={busy} onClick={() => onReject()}>
+            {isDiagnostic ? "Skip" : "Reject — replan"}
           </button>
           {!editing && !discussOpen && (
             <span className="kbd-hint">

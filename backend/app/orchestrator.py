@@ -183,7 +183,7 @@ def _run_command(run, system, step, audit) -> bool:
     return res.exit_code == 0
 
 
-def _set_plan(run, action) -> None:
+def _set_plan(run, action, mode: str = "fix") -> None:
     steps = action.get("steps", []) or []
     for st in steps:
         st["risk"] = check_command(st.get("command", "")).tier.value
@@ -191,7 +191,7 @@ def _set_plan(run, action) -> None:
     # (a terminal run must never carry a stale plan).
     transition(run, RunStatus.AWAITING_PLAN_APPROVAL)
     run["plan"] = {"root_cause": action.get("root_cause", ""), "steps": steps,
-                   "validation": action.get("validation", []) or []}
+                   "validation": action.get("validation", []) or [], "mode": mode}
 
 
 def _escalate(run, reason: str) -> None:
@@ -259,11 +259,11 @@ def _analyze(run, ticket, system, mem: str = "", feedback: str = "", replan: boo
             _escalate(run, "could not form a new plan after a failed attempt" if replan
                       else "could not converge on a plan after diagnostics")
             return
-        # diagnose — read-only only
+        # diagnose
         cmd = action.get("command", "")
         verdict = check_command(cmd)
-        step = _new_step(run, "diagnose", cmd, action.get("rationale", ""), risk=verdict.tier)
         if verdict.tier is RiskTier.SAFE:
+            step = _new_step(run, "diagnose", cmd, action.get("rationale", ""), risk=verdict.tier)
             _run_command(run, system, step, audit)
             # An SSH transport failure (could not connect / load the key) is recorded as a
             # "failed" step with exit_code None — distinct from a command that ran and exited
@@ -274,6 +274,17 @@ def _analyze(run, ticket, system, mem: str = "", feedback: str = "", replan: boo
                 _escalate(run, f"cannot reach the customer VM — {res.get('stderr') or 'SSH error'}")
                 return
             continue
+        if verdict.tier is RiskTier.GATED:
+            # The agent wants a state-changing or sensitive-config command as a diagnostic. Don't
+            # silently drop it — PAUSE and let the technician approve running it once (gaining the
+            # model real evidence). Reuse the plan-approval gate, tagged mode="diagnostic".
+            _set_plan(run, {"root_cause": "", "validation": [],
+                            "steps": [{"command": cmd, "rationale": action.get("rationale", ""), "expected": ""}]},
+                      mode="diagnostic")
+            audit.add("diagnostic_approval_requested", command=cmd)
+            return
+        # BLOCKED — never runs, even with approval (dangerous op, key material, placeholder).
+        step = _new_step(run, "diagnose", cmd, action.get("rationale", ""), risk=verdict.tier)
         step["status"] = "rejected"
         step["safety_reason"] = verdict.reason
         audit.add("nonread_diagnostic_rejected", command=cmd, risk=verdict.tier.value)
@@ -330,3 +341,27 @@ def _replan(run, ticket, system, feedback: str = "") -> None:
     MAX_FIX_ATTEMPTS). `feedback` is optional technician steer (the "discuss" loop).
     """
     _analyze(run, ticket, system, memory_mod.retrieve(ticket, system), feedback=feedback, replan=True)
+
+
+def _run_approved_diagnostic(run, ticket, system, edited_steps=None) -> None:
+    """Run a technician-approved diagnostic (a GATED/sensitive command the agent asked to run),
+    then CONTINUE analysis with the new evidence. The command is GATED (not BLOCKED) so
+    _run_command executes it and redacts the output. This is not a fix — there is no verification
+    or finish here; control returns to _analyze so the agent can use what it learned."""
+    audit = store.audit(run["id"])
+    plan = run["plan"] or {}
+    steps = edited_steps if edited_steps is not None else plan.get("steps", [])
+    run["plan"] = None
+    transition(run, RunStatus.ANALYZING)  # idempotent if the handler already moved us here
+    for st in steps:
+        if is_terminal(run["status"]):  # aborted mid-diagnostic
+            return
+        step = _new_step(run, "diagnose", st.get("command", ""), st.get("rationale", ""))
+        _run_command(run, system, step, audit)
+        res = step.get("result") or {}
+        if step["status"] == "failed" and res.get("exit_code") is None:
+            _escalate(run, f"cannot reach the customer VM — {res.get('stderr') or 'SSH error'}")
+            return
+    if is_terminal(run["status"]):
+        return
+    _analyze(run, ticket, system, memory_mod.retrieve(ticket, system))

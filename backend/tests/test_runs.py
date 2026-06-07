@@ -213,29 +213,59 @@ def test_finish_with_no_successful_evidence_escalates(env, monkeypatch):
     assert run["status"] == "escalated"  # all diagnostics failed -> can't report "resolved"
 
 
-def test_repeated_gated_diagnostic_does_not_loop(env, monkeypatch):
+def test_gated_diagnostic_pauses_for_technician_approval(env, monkeypatch):
+    # A GATED command proposed as a diagnostic now PAUSES for technician approval (reusing the
+    # plan gate, mode="diagnostic") so the model can gain that evidence — instead of being
+    # silently dropped.
     client, _ = env
-    # Regression: the agent keeps proposing a GATED command (e.g. the validation script) as a
-    # "diagnostic". It must NOT spin re-proposing it up to the hard limit — after a couple of
-    # rejections the loop forces a plan and (since this stub never plans) escalates. The agent
-    # must also RECEIVE its rejected attempts as feedback rather than flying blind.
-    seen_rejected = []
-
-    def fake(ticket, system, history, memory="", must_plan=False, rejected=None, force=False, feedback=""):
-        seen_rejected.append(len(rejected or []))
-        return {"action": "diagnose", "command": "sudo /opt/hackathon/public-test.sh",
-                "rationale": "validate first"}
-
-    monkeypatch.setattr(orch_mod.agent, "propose_action", fake)
+    monkeypatch.setattr(orch_mod.agent, "propose_action",
+                        lambda *a, **k: {"action": "diagnose",
+                                         "command": "cat /etc/customer-status.env",
+                                         "rationale": "confirm the port"})
     run = client.post("/api/runs", json={"ticket_id": 7001}).json()
 
-    assert run["status"] == "escalated"
-    diagnoses = [s for s in run["steps"] if s["kind"] == "diagnose"]
-    # Converges fast — bounded by REJECTED_DIAGNOSE_LIMIT (+1), well under the hard limit of 10.
-    assert len(diagnoses) <= orch_mod.REJECTED_DIAGNOSE_LIMIT + 1
-    assert diagnoses and all(s["status"] == "rejected" for s in diagnoses)
-    # The agent was told about its earlier rejected attempts (so a real LLM could self-correct).
-    assert max(seen_rejected) >= 1
+    assert run["status"] == "awaiting_plan_approval"
+    assert run["plan"]["mode"] == "diagnostic"
+    assert run["plan"]["steps"][0]["command"] == "cat /etc/customer-status.env"
+
+
+def test_approved_diagnostic_runs_then_resumes_analysis(env, monkeypatch):
+    # Approving a diagnostic runs it (GATED, redacted) and resumes analysis with the evidence;
+    # the agent then converges to a plan.
+    client, _ = env
+    actions = iter([
+        {"action": "diagnose", "command": "cat /etc/customer-status.env", "rationale": "confirm port"},
+        {"action": "plan", "root_cause": "wrong port",
+         "steps": [{"command": "sed -i 's/800/8080/' /etc/customer-status.env"}], "validation": []},
+    ])
+    monkeypatch.setattr(orch_mod.agent, "propose_action", lambda *a, **k: next(actions))
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+
+    paused = client.get(f"/api/runs/{rid}").json()
+    assert paused["plan"]["mode"] == "diagnostic"
+
+    after = client.post(f"/api/runs/{rid}/approve", json={}).json()
+    assert after["status"] == "awaiting_plan_approval"
+    assert after["plan"]["mode"] in (None, "fix")  # now a real fix plan
+    assert any(s["kind"] == "diagnose" and "customer-status.env" in s["command"]
+               and s["status"] == "executed" for s in after["steps"])
+
+
+def test_declined_diagnostic_resumes_without_running_it(env, monkeypatch):
+    # Declining a diagnostic does NOT run it and resumes analysis (not a failed-fix replan).
+    client, _ = env
+    actions = iter([
+        {"action": "diagnose", "command": "cat /etc/customer-status.env", "rationale": "confirm port"},
+        {"action": "plan", "root_cause": "x", "steps": [{"command": "systemctl restart svc"}], "validation": []},
+    ])
+    monkeypatch.setattr(orch_mod.agent, "propose_action", lambda *a, **k: next(actions))
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+
+    after = client.post(f"/api/runs/{rid}/reject", json={}).json()
+    assert after["status"] == "awaiting_plan_approval" and after["plan"]["mode"] in (None, "fix")
+    # the declined command never executed
+    assert not any(s["kind"] == "diagnose" and "customer-status.env" in s["command"]
+                   and s["status"] == "executed" for s in after["steps"])
 
 
 def test_ssh_transport_failure_escalates_without_looping(env, monkeypatch):

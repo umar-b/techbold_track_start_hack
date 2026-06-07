@@ -167,8 +167,13 @@ def create_app() -> FastAPI:
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
         steps = [s.model_dump() for s in body.steps] if body.steps is not None else None
-        transition(run, RunStatus.EXECUTING)
-        orch._submit(orch._execute_and_verify, run, ticket, system, steps)
+        if (run.get("plan") or {}).get("mode") == "diagnostic":
+            # Approving a one-off diagnostic: run it, then resume analysis (no fix/verify).
+            transition(run, RunStatus.ANALYZING)
+            orch._submit(orch._run_approved_diagnostic, run, ticket, system, steps)
+        else:
+            transition(run, RunStatus.EXECUTING)
+            orch._submit(orch._execute_and_verify, run, ticket, system, steps)
         return run
 
     @app.post("/api/runs/{run_id}/reject")
@@ -184,10 +189,22 @@ def create_app() -> FastAPI:
         # Cap length before it reaches the LLM prompt — bounds the prompt-injection
         # surface from this free-text field (the safety layer re-checks every command).
         feedback = (body.feedback or "").strip()[:1000]
+        plan = run.get("plan") or {}
+        is_diagnostic = plan.get("mode") == "diagnostic"
+        declined = plan.get("steps", [{}])[0].get("command", "") if is_diagnostic and plan.get("steps") else ""
         store.audit(run_id).add("plan_rejected", feedback=feedback)
         transition(run, RunStatus.ANALYZING)
         run["plan"] = None
-        orch._submit(orch._replan, run, ticket, system, feedback)
+        if is_diagnostic:
+            # The technician declined a one-off diagnostic — resume analysis and tell the agent
+            # not to re-propose it (don't treat it as a failed fix → no _replan).
+            note = (f"The technician DECLINED to run: {declined}. Do not propose it again — "
+                    "diagnose a different way or, if you have enough evidence, propose a plan.")
+            if feedback:
+                note += f" Technician note: {feedback}"
+            orch._submit(orch._analyze, run, ticket, system, memory_mod.retrieve(ticket, system), note)
+        else:
+            orch._submit(orch._replan, run, ticket, system, feedback)
         return run
 
     @app.post("/api/runs/{run_id}/abort")

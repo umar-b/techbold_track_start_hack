@@ -83,10 +83,19 @@ _PLACEHOLDER = re.compile(
     re.IGNORECASE,
 )
 
-# Any reference to these paths is treated as secret access and BLOCKED.
-_SECRET_PATH = re.compile(
+# True key material — pure secrets with no diagnostic value. Always BLOCKED, never approvable.
+_KEY_MATERIAL = re.compile(
     r"(?:/etc/g?shadow\b|\bid_rsa\b|\bid_dsa\b|\bid_ecdsa\b|\bid_ed25519\b"
-    r"|/etc/ssh/ssh_host_\w+_key\b|\S+\.pem\b|\S+\.key\b|(?:^|[/\s])\.env\b|/[\w./-]*\.env\b)",
+    r"|/etc/ssh/ssh_host_\w+_key\b|\S+\.pem\b|\S+\.key\b)",
+    re.IGNORECASE,
+)
+
+# Sensitive config that MAY hold a secret (e.g. an app's `.env`) but is also a legitimate thing
+# to read while diagnosing. Not auto-SAFE and not hard-BLOCKED: classified GATED so it runs only
+# with explicit technician approval, and its output is redacted (ADR-0004). This lets the agent
+# gain real evidence (e.g. a port) without auto-exposing secrets.
+_SENSITIVE_PATH = re.compile(
+    r"(?:(?:^|[/\s])\.env\b|/[\w./-]*\.env\b|\S*(?:secrets?|credentials?)\.[\w]+\b)",
     re.IGNORECASE,
 )
 
@@ -218,8 +227,8 @@ def check_command(command: str) -> SafetyVerdict:
         return SafetyVerdict(RiskTier.BLOCKED,
                              "Unresolved placeholder — discover the real value (path/name/port) "
                              "in a read-only diagnostic first, then use it literally")
-    if _SECRET_PATH.search(cmd):
-        return SafetyVerdict(RiskTier.BLOCKED, "Accessing a secret/credential path")
+    if _KEY_MATERIAL.search(cmd):
+        return SafetyVerdict(RiskTier.BLOCKED, "Accessing private-key / shadow material — never read")
     for pat, reason in _BLOCK_WHOLE:
         if re.search(pat, cmd, re.IGNORECASE):
             return SafetyVerdict(RiskTier.BLOCKED, reason)
@@ -228,6 +237,10 @@ def check_command(command: str) -> SafetyVerdict:
         for pat, reason in _BLOCK_SEG:
             if re.search(pat, seg, re.IGNORECASE):
                 return SafetyVerdict(RiskTier.BLOCKED, reason)
+    # A sensitive config (.env) — GATED so it runs only with technician approval (output redacted),
+    # rather than auto-running or being hard-blocked.
+    if _SENSITIVE_PATH.search(cmd):
+        return SafetyVerdict(RiskTier.GATED, "Reads a sensitive config (.env) — needs technician approval; output redacted")
     if segments and all(_segment_safe(s) for s in segments):
         return SafetyVerdict(RiskTier.SAFE, "Read-only diagnostic")
     return SafetyVerdict(RiskTier.GATED, "State-changing — requires an approved plan")

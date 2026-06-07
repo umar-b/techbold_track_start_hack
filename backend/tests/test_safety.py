@@ -90,20 +90,30 @@ def test_blocked_dangerous(cmd):
     assert tier(cmd) is RiskTier.BLOCKED
 
 
-# Secret reads are blocked even when they look like normal read commands.
+# True key material is BLOCKED — no diagnostic value, never readable even with approval.
 @pytest.mark.parametrize("cmd", [
     "cat /etc/shadow",
     "sudo cat /etc/shadow",
     "cat ~/.ssh/id_rsa",
-    "cat /opt/app/.env",
-    "grep PASSWORD /srv/app/.env",
     "cat /etc/ssh/ssh_host_rsa_key",
     "head -5 /home/azureuser/server.pem",
+    "cat /opt/app/tls.key",
 ])
-def test_secret_reads_blocked(cmd):
-    """Commands that reference credential paths should be BLOCKED."""
+def test_key_material_reads_blocked(cmd):
+    """Commands that reference private-key / shadow material should be BLOCKED."""
 
     assert tier(cmd) is RiskTier.BLOCKED
+
+
+# A sensitive *config* (.env) is GATED, not BLOCKED: it can run with technician approval, and its
+# output is redacted — so the agent can confirm e.g. a port without auto-exposing secrets.
+@pytest.mark.parametrize("cmd", [
+    "cat /opt/app/.env",
+    "grep PASSWORD /srv/app/.env",
+    "cat /etc/customer-status.env",
+])
+def test_sensitive_config_reads_are_gated(cmd):
+    assert tier(cmd) is RiskTier.GATED
 
 
 def test_sudo_prefix_does_not_bypass_block():
