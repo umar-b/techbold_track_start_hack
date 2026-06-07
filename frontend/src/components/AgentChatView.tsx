@@ -30,6 +30,29 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
   const escalated = status === "escalated";
   const aborted = status === "aborted";
   const elapsed = useElapsed(run?.created_at, isTerminal);
+
+  // Keyboard shortcuts: A approve · R reject (while awaiting a plan) · Esc abort.
+  // Approve/reject click the real buttons so an edited plan is approved exactly as
+  // the click path would; typing in an input/textarea (e.g. editing a command) is
+  // ignored, as are modified chords.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (isAwaitingPlan && plan && (k === "a" || k === "r")) {
+        e.preventDefault();
+        const sel = k === "a" ? '[data-shortcut="approve"]' : '[data-shortcut="reject"]';
+        document.querySelector<HTMLButtonElement>(sel)?.click();
+      } else if (e.key === "Escape" && run && !isTerminal && !acting) {
+        e.preventDefault();
+        abort();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isAwaitingPlan, plan, run, isTerminal, acting, abort]);
   const working =
     starting ||
     status === "analyzing" ||
@@ -110,10 +133,11 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
                 type="button"
                 className="btn btn-danger chat-send-btn"
                 aria-label={`Abort run for ticket #${ticket.id}`}
+                title="Abort (Esc)"
                 disabled={acting}
                 onClick={abort}
               >
-                Abort
+                Abort <kbd style={{ marginLeft: "0.4rem" }}>Esc</kbd>
               </button>
             )}
           </div>
@@ -331,15 +355,20 @@ function PlanApproval({
           </p>
         )}
         <div className="cmd-block-actions">
-          <button type="button" className="btn btn-gold cmd-approve-btn"
+          <button type="button" className="btn btn-gold cmd-approve-btn" data-shortcut="approve"
                   aria-label={dirty ? "Approve the edited fix plan" : "Approve the proposed fix plan"}
                   disabled={busy || hasEmpty} onClick={handleApprove}>
             {busy ? "Running…" : dirty ? "Approve edited plan" : "Approve plan"}
           </button>
-          <button type="button" className="btn btn-danger"
+          <button type="button" className="btn btn-danger" data-shortcut="reject"
                   aria-label="Reject the plan and replan" disabled={busy} onClick={onReject}>
             Reject — replan
           </button>
+          {!editing && (
+            <span className="kbd-hint">
+              <kbd>A</kbd> approve · <kbd>R</kbd> reject
+            </span>
+          )}
         </div>
       </div>
     </div>

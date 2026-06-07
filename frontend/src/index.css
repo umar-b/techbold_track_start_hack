@@ -1027,6 +1027,26 @@ p { margin: 0; }
   width: auto;
 }
 
+.cmd-block-actions { align-items: center; flex-wrap: wrap; }
+.kbd-hint {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+kbd {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  background: var(--warm);
+  border: 1px solid var(--border-mid);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0.05rem 0.32rem;
+  color: var(--ink-soft);
+}
+
 /* Done message */
 .chat-msg-done {
   display: flex;
