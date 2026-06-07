@@ -1,25 +1,43 @@
 import { useState } from "react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
+import { Ticket as TicketIcon, History, Brain } from "lucide-react";
 import type { CustomerSystem, Ticket } from "./types";
 import { TicketList } from "./components/TicketList";
 import { TicketDetail } from "./components/TicketDetail";
 import { ActivityReview } from "./components/ActivityReview";
 import { AgentChatView } from "./components/AgentChatView";
+import { RunHistory } from "./components/RunHistory";
+import { MemoryBrowser } from "./components/MemoryBrowser";
 import { Toaster } from "./components/Toaster";
 import { HeaderIdentity } from "./components/HeaderIdentity";
 
-type ViewName = "list" | "detail" | "chat" | "activity";
+type ViewName = "list" | "detail" | "chat" | "activity" | "runs" | "memory";
 type View =
   | { name: "list" }
   | { name: "detail"; ticketId: number }
   | { name: "chat"; ticket: Ticket; system: CustomerSystem }
-  | { name: "activity"; runId?: string };
+  | { name: "activity"; runId?: string }
+  | { name: "runs" }
+  | { name: "memory" };
 
+// Top-level sections (list/runs/memory) share depth 0; ticket flow nests deeper.
 const DEPTH: Record<ViewName, number> = {
   list: 0,
+  runs: 0,
+  memory: 0,
   detail: 1,
   chat: 2,
   activity: 3,
+};
+
+// Which nav tab is highlighted for a given view.
+const SECTION: Record<ViewName, "tickets" | "runs" | "memory"> = {
+  list: "tickets",
+  detail: "tickets",
+  chat: "tickets",
+  activity: "tickets",
+  runs: "runs",
+  memory: "memory",
 };
 
 const variants = {
@@ -50,6 +68,7 @@ export default function App() {
 
   const dir = DEPTH[view.name] - prevDepth;
   const isChat = view.name === "chat";
+  const section = SECTION[view.name];
 
   return (
     // reducedMotion="user" makes every motion/react animation honour the OS
@@ -65,6 +84,20 @@ export default function App() {
           <span className="brand-dot">·</span>
           <span className="brand-product">Service Desk Autopilot</span>
         </div>
+        <nav className="app-nav" aria-label="Primary">
+          <button type="button" className={`nav-tab${section === "tickets" ? " is-active" : ""}`}
+                  aria-current={section === "tickets"} onClick={() => navigate({ name: "list" })}>
+            <TicketIcon size={13} />Tickets
+          </button>
+          <button type="button" className={`nav-tab${section === "runs" ? " is-active" : ""}`}
+                  aria-current={section === "runs"} onClick={() => navigate({ name: "runs" })}>
+            <History size={13} />Runs
+          </button>
+          <button type="button" className={`nav-tab${section === "memory" ? " is-active" : ""}`}
+                  aria-current={section === "memory"} onClick={() => navigate({ name: "memory" })}>
+            <Brain size={13} />Memory
+          </button>
+        </nav>
         <HeaderIdentity />
       </header>
 
@@ -98,6 +131,10 @@ export default function App() {
                   onStartChat={(ticket, system) => navigate({ name: "chat", ticket, system })}
                 />
               )}
+              {view.name === "runs" && (
+                <RunHistory onOpenTicket={(ticketId) => navigate({ name: "detail", ticketId })} />
+              )}
+              {view.name === "memory" && <MemoryBrowser />}
               {view.name === "activity" && (
                 <ActivityReview
                   runId={view.runId}

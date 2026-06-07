@@ -1,4 +1,4 @@
-import type { ActivityDraft, AuditEntry, CustomerSystem, Me, PlanStepEdit, Run, RunSummary, Ticket } from "./types";
+import type { ActivityDraft, AuditEntry, CustomerSystem, Me, MemoryNote, PlanStepEdit, Run, RunSummary, Stats, Ticket } from "./types";
 
 export const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
@@ -130,6 +130,10 @@ export const api = {
     request(`/api/runs`, { method: "POST", body: JSON.stringify({ ticket_id: ticketId }) }),
   listRuns: (): Promise<RunSummary[]> =>
     MOCK_MODE ? Promise.resolve([]) : request(`/api/runs`),
+  stats: (): Promise<Stats> =>
+    MOCK_MODE ? Promise.resolve({ total: 0, by_status: {}, active_sessions: 0 }) : request(`/api/stats`),
+  memoryNotes: (): Promise<{ notes: MemoryNote[] }> =>
+    MOCK_MODE ? Promise.resolve({ notes: [] }) : request(`/api/memory`),
   getRun: (id: string): Promise<Run> => request(`/api/runs/${id}`),
   approve: (id: string, steps?: PlanStepEdit[]): Promise<Run> =>
     request(`/api/runs/${id}/approve`, {

@@ -91,6 +91,23 @@ export interface Run {
   steps: Step[];
   plan: Plan | null;
   created_at: string;
+  memory_count?: number;
+}
+
+export interface MemoryNote {
+  id: string;
+  title: string;
+  tags: string[];
+  os?: string;
+  created_at?: string;
+  links?: string[];
+  root_cause: string;
+}
+
+export interface Stats {
+  total: number;
+  by_status: Record<string, number>;
+  active_sessions: number;
 }
 
 export interface Me {
