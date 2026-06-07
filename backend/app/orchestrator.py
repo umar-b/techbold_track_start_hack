@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 from . import activity as activity_mod  # noqa: F401  (kept for parity / future use)
 from . import agent
 from . import memory as memory_mod
+from . import runlog
 from .audit import redact
 from .config import settings
 from .runstate import RunStatus, is_terminal, transition
@@ -112,12 +113,17 @@ def _execute(run: Dict[str, Any], system: Dict[str, Any], command: str, timeout=
 
 
 def _close_if_terminal(run: Dict[str, Any]) -> None:
-    """Close the run's SSH session once it reaches a terminal status.
+    """Close the run's SSH session once it reaches a terminal status, and persist the
+    run to the durable corpus.
 
-    The single cleanup site; the per-run lock makes it wait for any in-flight command
-    so abort (on another thread) never closes the transport mid-exec.
+    The single site every terminal run passes through — finished/escalated via the
+    worker's finally, aborted via the abort handler — so it is also where the full
+    run (success OR failure) is snapshotted for the learning corpus (runlog). The
+    per-run lock makes the close wait for any in-flight command so an abort on
+    another thread never closes the transport mid-exec.
     """
     if is_terminal(run["status"]):
+        runlog.record(run)  # durable record of every outcome, incl. failed/aborted
         with store.lock(run["id"]):
             store.close_session(run["id"])
 

@@ -25,6 +25,7 @@ from . import activity as activity_mod
 from . import activity_store
 from . import memory as memory_mod
 from . import orchestrator as orch
+from . import runlog
 from . import schemas
 from .audit import redact
 from .config import settings
@@ -113,6 +114,22 @@ def create_app() -> FastAPI:
         """Locally-mirrored activities for a ticket (newest first) — the resolution
         shown when a solved ticket is reopened. Phoenix has no read-back endpoint."""
         return {"ticket_id": ticket_id, "activities": activity_store.for_ticket(ticket_id)}
+
+    @app.get("/api/tickets/{ticket_id}/runs")
+    def ticket_runs(ticket_id: int):
+        """Every persisted run for a ticket (newest first) — the durable record of
+        all attempts, resolved AND failed/aborted, with their full step logs. Survives
+        a restart (the in-memory run store does not); the learning corpus."""
+        return {"ticket_id": ticket_id, "runs": runlog.for_ticket(ticket_id)}
+
+    @app.get("/api/runs/{run_id}/record")
+    def run_record(run_id: str):
+        """One run's durable snapshot. Unlike /api/runs/{id} (in-memory, gone after a
+        restart or process churn), this reads the persisted step log from disk."""
+        snap = runlog.get(run_id)
+        if snap is None:
+            raise HTTPException(404, "No persisted record for this run")
+        return snap
 
     @app.post("/api/runs")
     def start_run(body: schemas.StartRunIn, phoenix: PhoenixClient = Depends(get_phoenix)):

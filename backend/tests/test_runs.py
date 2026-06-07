@@ -97,6 +97,12 @@ def test_full_run_diagnose_plan_approve_finish(env, monkeypatch):
     assert resp["activity"]["ticket_id"] == 7001
     assert (7001, "DONE") in fake.statuses
 
+    # The finished run is persisted to the durable corpus with its full step log.
+    runs = client.get("/api/tickets/7001/runs").json()["runs"]
+    assert len(runs) == 1 and runs[0]["outcome"] == "finished"
+    assert runs[0]["counts"]["fixes_executed"] == 1
+    assert client.get(f"/api/runs/{rid}/record").json()["id"] == rid
+
 
 def test_blocked_command_in_approved_plan_never_runs(env, monkeypatch):
     client, _ = env
@@ -121,6 +127,10 @@ def test_abort_from_plan_gate(env, monkeypatch):
     rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
     run = client.post(f"/api/runs/{rid}/abort").json()
     assert run["status"] == "aborted"
+
+    # An aborted attempt is corpus too — persisted so it can be learned from.
+    runs = client.get("/api/tickets/7001/runs").json()["runs"]
+    assert len(runs) == 1 and runs[0]["outcome"] == "aborted"
 
 
 def test_get_unknown_run_404(env):
