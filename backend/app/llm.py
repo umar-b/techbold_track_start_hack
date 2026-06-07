@@ -125,10 +125,14 @@ def _loads(text: Optional[str]) -> Optional[Dict[str, Any]]:
     try:
         return json.loads(t)
     except Exception:  # noqa: BLE001
-        i, j = t.find("{"), t.rfind("}")
-        if 0 <= i < j:
+        # Models sometimes wrap the object in prose, or (with json_object mode) emit the
+        # object TWICE — `{...}\n{...}`. raw_decode parses the FIRST complete JSON object
+        # from the first brace and ignores any trailing data, so both cases yield a dict.
+        i = t.find("{")
+        if i >= 0:
             try:
-                return json.loads(t[i:j + 1])
+                obj, _ = json.JSONDecoder().raw_decode(t[i:])
+                return obj
             except Exception:  # noqa: BLE001
                 return None
         return None

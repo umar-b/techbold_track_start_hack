@@ -91,6 +91,17 @@ def test_tolerates_single_line_fenced_json():
     assert out["command"] == "ss -tlnp"
 
 
+def test_tolerates_duplicated_json_object():
+    # gpt-5.x with json_object mode sometimes emits the object TWICE, concatenated.
+    # Parse the FIRST one instead of failing and silently degrading to the baseline.
+    dup = ('{"action":"diagnose","command":"systemctl status x"}\n'
+           '{"action":"diagnose","command":"systemctl status x"}')
+    model = _model(lambda messages: _resp(content=dup))
+    out = llm.complete_json("sys", "usr", model=model)
+    assert out["action"] == "diagnose"
+    assert out["command"] == "systemctl status x"
+
+
 def _fake_chat_openai(record):
     """A stand-in langchain_openai module whose ChatOpenAI records its kwargs."""
     class _FakeChatOpenAI:
