@@ -56,8 +56,17 @@ sorts. These are all client-only and cannot affect backend behaviour.
 
 - [x] Full `pytest` + new tests for Phase 2 endpoints and the reaper.
 - [x] Frontend `tsc --noEmit` clean.
-- [~] `code-reviewer` subagent pass on the diff; fix CRITICAL/HIGH.
-- [~] Update `README.md` (new endpoints, UX features) and the architecture doc.
+- [x] `code-reviewer` subagent pass on the diff (verdict APPROVE; 0 CRITICAL/HIGH).
+  Fixed both MEDIUM findings (useRun unmount guards, reaper stale-default).
+- [x] Update `README.md` (new endpoints, UX features) and the architecture doc.
+
+## Phase 5 — Follow-on additions (post-review)
+
+- [x] **Audit-trail endpoint + viewer.** `GET /api/runs/{id}/audit` + a collapsible
+  sidebar panel (PRODUCT.md principle 5, rubric C).
+- [x] **Reduced-motion compliance.** `MotionConfig reducedMotion="user"` so every
+  motion/react transition honours the OS setting — the global CSS rule only covered
+  CSS animations, not motion's JS-driven transforms (PRODUCT.md accessibility rule).
 
 ---
 

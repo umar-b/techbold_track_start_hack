@@ -109,7 +109,8 @@ cd frontend && npx tsc --noEmit
 - **B (troubleshooting)** — guidebook-driven diagnosis + minimal, *persistent* fixes (services
   `enable`d, config on disk), validated with the provided `public-test.sh`.
 - **C (safety)** — code-enforced `SAFE/GATED/BLOCKED` tiers, secret-read blocking, append-only
-  audit log, redaction on every output/activity, plan-level human approval.
+  audit log (exposed read-only at `/api/runs/{id}/audit` and viewable in the UI), redaction on
+  every output/activity, plan-level human approval.
 - **D (UX)** — searchable + filterable ticket list (status/priority over the server sort),
   detail + system info, live step log with risk badges, per-step timing + copy-command, a live
   SSE connection indicator, a run timer, keyboard shortcuts (A/R/Esc), toasts, and

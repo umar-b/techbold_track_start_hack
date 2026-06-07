@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import type { CustomerSystem, Ticket } from "./types";
 import { TicketList } from "./components/TicketList";
 import { TicketDetail } from "./components/TicketDetail";
@@ -51,6 +51,11 @@ export default function App() {
   const isChat = view.name === "chat";
 
   return (
+    // reducedMotion="user" makes every motion/react animation honour the OS
+    // prefers-reduced-motion setting (transforms collapse, opacity stays) —
+    // PRODUCT.md requires reduced motion for all state-transition animations,
+    // and the global CSS rule only covers CSS animations, not motion's JS ones.
+    <MotionConfig reducedMotion="user">
     <div style={{ overflowX: "hidden" }}>
       <Toaster />
       <header className="app-header">
@@ -102,5 +107,6 @@ export default function App() {
         </motion.div>
       </AnimatePresence>
     </div>
+    </MotionConfig>
   );
 }
