@@ -506,7 +506,18 @@ p { margin: 0; }
   font-size: 0.8125rem;
   font-weight: 400;
 }
-.ticket-title    { font-weight: 600; color: var(--navy); }
+.ticket-title    { font-weight: 600; color: var(--navy); display: inline-flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.ticket-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--safe);
+}
+.ticket-live .conn-dot { width: 6px; height: 6px; }
 .ticket-customer { color: var(--ink-soft); font-size: 0.875rem; }
 
 /* ============================================================

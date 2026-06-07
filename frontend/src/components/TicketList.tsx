@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
-import type { Ticket } from "../types";
+import type { RunSummary, Ticket } from "../types";
 import { api, getErrorMessage } from "../api";
 
 type Props = { onOpen: (ticketId: number) => void };
 
 const STATUS_OPTIONS = ["all", "OPEN", "PENDING", "DONE"] as const;
 const PRIORITY_OPTIONS = ["all", "high", "medium", "low"] as const;
+const TERMINAL_RUN = new Set(["finished", "aborted", "escalated"]);
 
 export function TicketList({ onOpen }: Props) {
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
@@ -16,6 +17,7 @@ export function TicketList({ onOpen }: Props) {
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>("all");
   const [priorityFilter, setPriorityFilter] = useState<(typeof PRIORITY_OPTIONS)[number]>("all");
   const [reloadKey, setReloadKey] = useState(0);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -26,6 +28,20 @@ export function TicketList({ onOpen }: Props) {
       .catch((e) => { if (active) setError(getErrorMessage(e)); });
     return () => { active = false; };
   }, [sort, reloadKey]);
+
+  // Which tickets have a live run — shown as an "in progress" marker. Best-effort:
+  // a failure here must never break the ticket list, so the error is swallowed.
+  useEffect(() => {
+    let active = true;
+    api.listRuns().then((r) => { if (active) setRuns(r); }).catch(() => { /* optional */ });
+    return () => { active = false; };
+  }, [reloadKey]);
+
+  const activeByTicket = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const r of runs) if (!TERMINAL_RUN.has(r.status)) m.set(r.ticket_id, r.status);
+    return m;
+  }, [runs]);
 
   // Filtering is client-side over the already-fetched list — sort stays server-side.
   const filtered = useMemo(() => {
@@ -143,7 +159,14 @@ export function TicketList({ onOpen }: Props) {
                 <li key={t.id}>
                   <button type="button" className="ticket-row" onClick={() => onOpen(t.id)}>
                     <span className="ticket-id">#{t.id}</span>
-                    <span className="ticket-title">{t.title}</span>
+                    <span className="ticket-title">
+                      {t.title}
+                      {activeByTicket.has(t.id) && (
+                        <span className="ticket-live" title={`Run ${activeByTicket.get(t.id)}`}>
+                          <span className="conn-dot conn-dot--live" />in progress
+                        </span>
+                      )}
+                    </span>
                     <span className="ticket-customer">{t.customer_name}</span>
                     <span className={`pill pri-${t.priority}`}>{t.priority}</span>
                     <span className={`pill st-${t.status}`}>{t.status}</span>
