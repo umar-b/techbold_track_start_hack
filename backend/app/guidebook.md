@@ -19,6 +19,11 @@ never reboot to "test"; verify persistence cheaply instead:
 - Fix the *generator* of a recurring problem (e.g. logrotate), not just its current effect.
 
 ## Common failure classes (knowledge, not branches)
+These are illustrative examples of the METHOD, not an exhaustive checklist and not tied to any
+specific ticket. The incident in front of you may be a different class entirely — apply the same
+loop (live evidence → name the specific broken component → smallest persistent fix → validate) to
+whatever the system actually shows. Let the evidence pick the class; do not force the symptom into
+one of these.
 - **Service down / not enabled** — `systemctl status/is-enabled`, `journalctl -u <svc>`. Fix the
   cause (bad config, dependency), then `enable --now`.
 - **Permissions** — upload/data dir not writable by the app user. Use a **targeted** `chown`/`chmod`
