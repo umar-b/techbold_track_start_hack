@@ -70,6 +70,20 @@ sorts. These are all client-only and cannot affect backend behaviour.
 
 ---
 
+## Phase 6 — Second user-requested round
+
+- [x] **Verified memory works** end-to-end (write note → retrieve seeds a related
+  ticket by tag/keyword). Notes only accrue once an activity is *submitted*.
+- [x] **Test count assessed** — not bloated: 91 test functions expand to 141 cases via
+  `@parametrize`, run in <0.5 s. Kept; none removed.
+- [x] **Info sidebar moved to the LEFT** of the conversation (flex `order`).
+- [x] **Collapsible step output** — steps show only the command; output is on-click.
+- [x] **Richer plan card + discuss loop** — gold-framed card, numbered steps,
+  root-cause/validation sections, and a "Discuss / request changes" box that steers a
+  replan (`POST /reject {feedback}` → `propose_action(feedback=…)`).
+- [x] **Resume an in-flight run** — `useRun` adopts an existing non-terminal run for the
+  ticket instead of 409-ing; TicketList shows an "in progress" marker.
+
 ## Explicitly out of scope (deliberate non-goals)
 
 - **Persisting run state to a DB.** ADR-0008 keeps run control in-memory for the
