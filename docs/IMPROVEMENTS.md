@@ -84,6 +84,18 @@ sorts. These are all client-only and cannot affect backend behaviour.
 - [x] **Resume an in-flight run** — `useRun` adopts an existing non-terminal run for the
   ticket instead of 409-ing; TicketList shows an "in progress" marker.
 
+## Phase 7 — Feature round ("all four")
+
+- [x] **Memory made visible** — `GET /api/memory` + a Memory browser view (cards per
+  resolved incident with tags, root cause, graph links), and a "seeded by N past
+  incidents" chip in the run when memory pre-filled hypotheses (`run.memory_count`).
+- [x] **Run history view** — header nav → Runs: a stat strip (`/api/stats`) + a list of
+  every run (`/api/runs`, joined to ticket titles); click resumes via the ticket.
+- [x] **Activity-review context** — a "what the agent did" command timeline beside the
+  documentation form (fetches the run; best-effort).
+- [x] **Audit download + keyboard nav** — "Download JSON" on the audit trail; ticket list
+  `/` focus search, `j/k` move, `↵` open.
+
 ## Explicitly out of scope (deliberate non-goals)
 
 - **Persisting run state to a DB.** ADR-0008 keeps run control in-memory for the

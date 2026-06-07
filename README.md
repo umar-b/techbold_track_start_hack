@@ -111,10 +111,11 @@ cd frontend && npx tsc --noEmit
 - **C (safety)** — code-enforced `SAFE/GATED/BLOCKED` tiers, secret-read blocking, append-only
   audit log (exposed read-only at `/api/runs/{id}/audit` and viewable in the UI), redaction on
   every output/activity, plan-level human approval.
-- **D (UX)** — searchable + filterable ticket list (status/priority over the server sort),
-  detail + system info, live step log with risk badges, per-step timing + copy-command, a live
-  SSE connection indicator, a run timer, keyboard shortcuts (A/R/Esc), toasts, and
-  approve/edit/reject/abort.
+- **D (UX)** — searchable/filterable + keyboard-navigable ticket list, detail + system info,
+  live step log (collapsible output, per-step timing, copy-command), a live SSE connection
+  indicator + run timer, keyboard shortcuts (A/R/Esc), toasts, approve/edit/reject and a plan
+  **discuss** loop. Plus a **Run history** view (`/api/runs` + `/api/stats`) and a **Memory
+  browser** (`/api/memory`) with a per-run "seeded by N past incidents" chip.
 - **E (engineering)** — separated modules, this README, runnable tests, timeouts + bounded
   retries, `.env.example`, no secrets in the repo.
 
