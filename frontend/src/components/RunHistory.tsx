@@ -19,12 +19,18 @@ export function RunHistory({ onOpenTicket }: Props) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([api.listRuns(), api.stats(), api.listTickets()])
+    // Only the run list is essential; stats + titles are enrichment, so a failure
+    // in either must not blank the whole view (e.g. an older backend without /api/stats).
+    Promise.all([
+      api.listRuns(),
+      api.stats().catch(() => null),
+      api.listTickets().catch(() => [] as Ticket[]),
+    ])
       .then(([r, s, tickets]) => {
         if (!active) return;
         setRuns([...r].sort((a, b) => b.created_at.localeCompare(a.created_at)));
-        setStats(s);
-        setTitles(new Map(tickets.map((t: Ticket) => [t.id, t.title])));
+        if (s) setStats(s);
+        setTitles(new Map(tickets.map((t) => [t.id, t.title])));
       })
       .catch((e) => { if (active) setError(getErrorMessage(e)); });
     return () => { active = false; };

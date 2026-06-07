@@ -68,7 +68,10 @@ export function TicketList({ onOpen }: Props) {
 
   // Keyboard navigation: "/" focuses search, j/k (or arrows) move a highlighted
   // row, Enter opens it. Typing in an input is respected (only "/" steals focus).
-  useEffect(() => { setSelected(-1); }, [query, statusFilter, priorityFilter, sort]);
+  // Reset on any change to the derived list (filters, sort, OR a ticket reload) so a
+  // shrunk list never leaves the highlight on a now-missing row. filtered is a useMemo,
+  // so its identity is stable between unrelated renders.
+  useEffect(() => { setSelected(-1); }, [filtered]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

@@ -168,14 +168,22 @@ def retrieve_notes(ticket: Dict[str, Any], system: Dict[str, Any] | None = None,
 
 
 def list_notes() -> List[Dict[str, Any]]:
-    """All memory notes as summaries (newest first) for the memory browser."""
-    out = [{"id": n.get("id"), "title": n.get("title", "").strip(),
-            "tags": n.get("tags", []), "os": n.get("os", ""),
-            "created_at": n.get("created_at", ""), "links": n.get("links", []),
-            "root_cause": _summary(n.get("body", ""))}
-           for n in _load_notes()]
-    out.sort(key=lambda n: n.get("created_at", ""), reverse=True)
-    return out
+    """All memory notes as summaries (newest first) for the memory browser.
+
+    Never raises — a bad MEMORY_DIR (permissions, unmounted volume) yields [] and a
+    log line, not a 500, matching _select()'s contract.
+    """
+    try:
+        out = [{"id": n.get("id"), "title": n.get("title", "").strip(),
+                "tags": n.get("tags", []), "os": n.get("os", ""),
+                "created_at": n.get("created_at", ""), "links": n.get("links", []),
+                "root_cause": _summary(n.get("body", ""))}
+               for n in _load_notes()]
+        out.sort(key=lambda n: n.get("created_at", ""), reverse=True)
+        return out
+    except Exception:  # noqa: BLE001
+        log.exception("memory list_notes failed")
+        return []
 
 
 def _summary(body: str) -> str:

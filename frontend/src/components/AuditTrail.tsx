@@ -39,7 +39,9 @@ export function AuditTrail({ runId, refreshKey }: Props) {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
+    // Defer revocation off the click tick so the browser has finished reading the
+    // blob URL before it's freed (revoking synchronously isn't spec-safe).
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   return (
