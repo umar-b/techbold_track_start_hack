@@ -137,7 +137,8 @@ def create_app() -> FastAPI:
         return run
 
     @app.post("/api/runs/{run_id}/reject")
-    def reject(run_id: str, phoenix: PhoenixClient = Depends(get_phoenix)):
+    def reject(run_id: str, body: schemas.RejectIn = Body(default=schemas.RejectIn()),
+               phoenix: PhoenixClient = Depends(get_phoenix)):
         run = store.get(run_id)
         if not run:
             raise HTTPException(404, "Run not found")
@@ -145,10 +146,11 @@ def create_app() -> FastAPI:
             raise HTTPException(409, f"Nothing to reject (status={run['status']})")
         ticket = _erp(phoenix.get_ticket, run["ticket_id"])
         system = _erp(phoenix.customer_system, run["ticket_id"]).get("system", {})
-        store.audit(run_id).add("plan_rejected")
+        feedback = (body.feedback or "").strip()
+        store.audit(run_id).add("plan_rejected", feedback=feedback)
         transition(run, RunStatus.ANALYZING)
         run["plan"] = None
-        orch._submit(orch._replan, run, ticket, system)
+        orch._submit(orch._replan, run, ticket, system, feedback)
         return run
 
     @app.post("/api/runs/{run_id}/abort")

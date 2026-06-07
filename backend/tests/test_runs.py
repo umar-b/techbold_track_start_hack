@@ -291,3 +291,28 @@ def test_audit_trail_endpoint_returns_redacted_entries(env, monkeypatch):
     assert all("ts" in e for e in body["entries"])
 
     assert client.get("/api/runs/nope/audit").status_code == 404
+
+
+def test_reject_with_feedback_steers_the_replan(env, monkeypatch):
+    client, _ = env
+    seen = {}
+    actions = iter([
+        {"action": "plan", "root_cause": "a",
+         "steps": [{"command": "systemctl restart nginx"}], "validation": []},
+        {"action": "plan", "root_cause": "b",
+         "steps": [{"command": "systemctl reload nginx"}], "validation": []},
+    ])
+
+    def fake(*a, **k):
+        seen.clear()
+        seen.update(k)
+        return next(actions)
+
+    monkeypatch.setattr(orch_mod.agent, "propose_action", fake)
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+
+    run = client.post(f"/api/runs/{rid}/reject", json={"feedback": "reload, don't restart"}).json()
+
+    assert run["status"] == "awaiting_plan_approval"
+    assert seen.get("feedback") == "reload, don't restart"  # the steer reached the agent
+    assert run["plan"]["root_cause"] == "b"

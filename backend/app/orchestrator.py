@@ -281,11 +281,15 @@ def _execute_and_verify(run, ticket, system, edited_steps=None) -> None:
         _replan(run, ticket, system)
 
 
-def _replan(run, ticket, system) -> None:
-    """After a failed/rejected plan, the agent forms a NEW plan for the technician to approve."""
+def _replan(run, ticket, system, feedback: str = "") -> None:
+    """After a failed/rejected plan, the agent forms a NEW plan for the technician to approve.
+
+    `feedback` is optional technician steer (the "discuss" loop) passed through to the agent.
+    """
     transition(run, RunStatus.ANALYZING)
     mem = memory_mod.retrieve(ticket, system)
-    action = agent.propose_action(ticket, system, _executed_history(run), memory=mem, must_plan=True)
+    action = agent.propose_action(ticket, system, _executed_history(run), memory=mem,
+                                  must_plan=True, feedback=feedback)
     if action.get("action") == "plan":
         _set_plan(run, action)
         store.audit(run["id"]).add("replan_proposed", root_cause=run["plan"]["root_cause"],

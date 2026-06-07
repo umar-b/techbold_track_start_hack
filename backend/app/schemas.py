@@ -30,6 +30,16 @@ class ApproveIn(BaseModel):
     steps: Optional[List[PlanStepIn]] = None
 
 
+class RejectIn(BaseModel):
+    """Optional free-text steer when rejecting / refining a plan.
+
+    Empty -> a plain replan. With text -> the agent is told to incorporate the
+    technician's feedback into the next plan (a lightweight "discuss" loop).
+    """
+
+    feedback: Optional[str] = None
+
+
 class SubmitActivityIn(BaseModel):
     """The final activity text that gets written back to Phoenix ERP."""
 

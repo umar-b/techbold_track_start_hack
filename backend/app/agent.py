@@ -107,8 +107,15 @@ def _unwrap(out: Any) -> Any:
 def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
                    history: List[Dict[str, Any]], memory: str = "",
                    must_plan: bool = False,
-                   rejected: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                   rejected: Optional[List[Dict[str, Any]]] = None,
+                   feedback: str = "") -> Dict[str, Any]:
     related = ("RELATED PAST INCIDENTS (verify against live evidence, do not assume):\n" + memory) if memory else ""
+    # Free-text steer from the technician on the previous plan (the "discuss" loop):
+    # a strong, explicit instruction to adjust the next plan accordingly.
+    steer = ""
+    if feedback:
+        steer = ("TECHNICIAN FEEDBACK on your previous plan — you MUST incorporate this into the "
+                 f"next plan (adjust commands/approach as asked):\n{feedback}\n\n")
     # Feedback on commands the safety layer already refused as non-read-only, so the agent
     # stops re-proposing them and instead picks a read-only probe or puts the change in a plan.
     refused = ""
@@ -131,7 +138,7 @@ def propose_action(ticket: Dict[str, Any], system: Dict[str, Any],
         f"GUIDEBOOK:\n{load_guidebook()}\n\n"
         f"TICKET #{ticket.get('id')}: {ticket.get('title','')}\n{ticket.get('description','')}\n\n"
         f"SYSTEM: {system}\n\n{related}\n\n"
-        f"HISTORY:\n{_history_text(history)}\n\n{refused}{closing}"
+        f"HISTORY:\n{_history_text(history)}\n\n{steer}{refused}{closing}"
     )
     # All in-loop reasoning — both deciding the next diagnostic and producing the
     # plan — runs on the stronger reasoning model (ADR-0011). The cheap model is
