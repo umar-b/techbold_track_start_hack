@@ -6,8 +6,9 @@ the technician's approval on every change — **diagnoses, fixes, validates**, a
 **activity** back to the ERP. A human approves every state-changing action; the agent never acts
 unsupervised.
 
+- **Technical writeup:** [`REPORT.md`](REPORT.md) — architecture, agent method, safety, testing & reliability
 - **Domain vocabulary:** [`CONTEXT.md`](CONTEXT.md)
-- **Decisions & rationale:** [`docs/adr/`](docs/adr/) (9 ADRs)
+- **Decisions & rationale:** [`docs/adr/`](docs/adr/) (11 ADRs)
 - **Diagrams (components, run loop, state, safety tiers):** [`docs/architecture.md`](docs/architecture.md)
 
 ## How it works
@@ -95,12 +96,30 @@ python scripts/smoke/check_phoenix.py        # ERP token + tickets
 python scripts/smoke/check_ssh.py            # SSH into the first ticket's VM (uname/id/sudo)
 python scripts/smoke/check_azure.py          # chat + JSON mode on the deployment
 
-# 2) Backend tests (no network — mocked)
-cd backend && .venv/bin/python -m pytest -q  # 138 tests
+# 2) Backend tests (no network — mocked, fully offline)
+cd backend && .venv/bin/python -m pytest -q  # 165 passed, 12 skipped
 
 # 3) Frontend typecheck
 cd frontend && npx tsc --noEmit
 ```
+
+### Live end-to-end (optional — needs a filled-in `.env`)
+
+A per-ticket suite drives the **whole** real workflow (start → diagnose → approve → execute
+→ validate → submit) against live Phoenix + SSH VMs + Azure. It is **skipped by default** so
+the suite above stays hermetic; opt in with `RUN_LIVE_E2E=1`. Assertions are generic (a run
+finishes, `public-test.sh` passes, the activity is written, the memory note is secret-free,
+the audit is complete) — never ticket-specific, so the same bar applies to unseen incidents.
+
+```bash
+cd backend && RUN_LIVE_E2E=1 SSH_SESSION_IDLE_TTL=0 \
+  .venv/bin/python -m pytest tests/test_e2e_live.py -v
+```
+
+> Reset between runs with the Phoenix `POST /api/v1/me/reset` endpoint (wired as
+> `PhoenixClient.reset_me()`; it reboots the VMs back to the broken state). It is
+> deliberately **not** exposed as a backend route — nothing in the workspace should reboot
+> every customer VM with one click. The suite's fixture calls it once up front.
 
 ## How it maps to the rubric
 
@@ -138,3 +157,7 @@ cd frontend && npx tsc --noEmit
 - **Agent only runs read-only diagnostics** → Azure vars not set, or tool/JSON call failing — run
   `scripts/smoke/check_azure.py`.
 - **Can't reach a local mock from Docker** → use `host.docker.internal`, not `localhost`.
+
+## License
+
+[MIT](LICENSE).

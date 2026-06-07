@@ -23,5 +23,10 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Office / slide decks + their lock files (not source)
+*.pptx
+*.ppt
+~$*
+
 # Runtime audit logs
 data/
