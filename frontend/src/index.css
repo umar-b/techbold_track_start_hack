@@ -364,6 +364,68 @@ p { margin: 0; }
 .badge-none    { background: var(--off-white);  color: var(--muted);  border-color: var(--border); }
 
 /* ============================================================
+   Ticket toolbar — search + filters
+   ============================================================ */
+.ticket-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 200px;
+}
+.search-icon {
+  position: absolute;
+  left: 0.65rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+.search-input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 2rem 0.5rem 2.1rem;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color var(--dur-fast) var(--ease-std);
+}
+.search-input:focus { outline: none; border-color: var(--navy); }
+.search-input::placeholder { color: var(--muted); }
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-clear { position: absolute; right: 0.4rem; }
+
+.result-count {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin-bottom: 0.85rem;
+}
+.result-clear { margin-bottom: 0; }
+
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.empty-state {
+  padding: 2.5rem 0;
+  text-align: center;
+}
+
+/* ============================================================
    Ticket list
    ============================================================ */
 .ticket-list {
