@@ -91,15 +91,29 @@ def _default_model() -> Any:
     return _build_model(_fast_model_name()) if available() else None
 
 
+_warned_no_reasoning_model = False
+
+
 def _reasoning_model() -> Any:
     """The stronger model for in-loop reasoning (ADR-0011); falls back to the fast model.
 
-    Used for every diagnose/plan decision; the fast model is reserved for the
-    non-reasoning activity-log draft.
+    Used for every diagnose/plan decision. If LLM_REASONING_MODEL is unset, ALL reasoning
+    silently runs on the fast model (e.g. gpt-5.4-nano) — a common misconfiguration that makes
+    troubleshooting weak — so warn loudly (once) when that fallback is in effect.
     """
+    global _warned_no_reasoning_model
     if not available():
         return None
-    return _build_model(settings.LLM_REASONING_MODEL or _fast_model_name())
+    name = settings.LLM_REASONING_MODEL or _fast_model_name()
+    if not settings.LLM_REASONING_MODEL and not _warned_no_reasoning_model:
+        _warned_no_reasoning_model = True
+        log.warning(
+            "LLM_REASONING_MODEL is not set — ALL in-loop reasoning (diagnose/plan) is running on "
+            "the FAST model %r. Set LLM_REASONING_MODEL to the stronger model (e.g. gpt-5.4) for "
+            "real troubleshooting; the fast model is only meant for the activity draft (ADR-0011).",
+            name,
+        )
+    return _build_model(name)
 
 
 def _loads(text: Optional[str]) -> Optional[Dict[str, Any]]:
