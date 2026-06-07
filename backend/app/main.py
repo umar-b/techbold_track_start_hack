@@ -162,6 +162,19 @@ def create_app() -> FastAPI:
         orch._close_if_terminal(run)
         return run
 
+    @app.get("/api/runs/{run_id}/audit")
+    def audit_trail(run_id: str):
+        """The append-only, already-redacted audit trail for a run (ADR-0004).
+
+        Surfaces the canonical record the UI can show alongside the step log —
+        including events steps don't carry (plan_proposed/approved, escalated,
+        activity_submitted). Read-only; entries are immutable.
+        """
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Run not found")
+        return {"run_id": run_id, "entries": store.audit(run_id).entries}
+
     @app.get("/api/runs/{run_id}/activity-draft")
     def activity_draft(run_id: str, phoenix: PhoenixClient = Depends(get_phoenix)):
         run = store.get(run_id)

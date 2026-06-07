@@ -6,6 +6,7 @@ import { useRun } from "../hooks/useRun";
 import type { ConnectionState } from "../hooks/useRun";
 import { RiskBadge } from "./RiskBadge";
 import { CopyButton } from "./CopyButton";
+import { AuditTrail } from "./AuditTrail";
 import { useElapsed } from "../hooks/useElapsed";
 import { formatDuration, formatElapsed } from "../lib/format";
 
@@ -188,6 +189,13 @@ export function AgentChatView({ ticket, system, onExit, onActivity }: Props) {
             )}
           </dl>
         </div>
+
+        {run && (
+          <>
+            <div className="chat-side-divider" />
+            <AuditTrail runId={run.id} refreshKey={`${status}:${steps.length}`} />
+          </>
+        )}
       </aside>
     </div>
   );

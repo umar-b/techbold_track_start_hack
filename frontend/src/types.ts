@@ -93,6 +93,12 @@ export interface Run {
   created_at: string;
 }
 
+export interface AuditEntry {
+  ts: string;
+  event: string;
+  [field: string]: unknown;
+}
+
 export interface ActivityDraft {
   summary: string;
   root_cause: string;

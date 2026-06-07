@@ -1268,6 +1268,59 @@ kbd {
 .chat-side-dl dt { color: var(--muted); font-weight: 500; }
 .chat-side-dl dd { margin: 0; font-family: var(--mono); font-size: 0.775rem; color: var(--navy); }
 
+/* Audit trail (collapsible) */
+.audit { display: flex; flex-direction: column; }
+.audit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  transition: color var(--dur-fast) var(--ease-std);
+}
+.audit-toggle:hover { color: var(--navy); }
+.audit-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.audit-count {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 600;
+  background: var(--navy-subtle);
+  color: var(--navy-mid);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+.audit-body { margin-top: 0.6rem; }
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.audit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.5rem;
+  align-items: baseline;
+  font-size: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.audit-time { color: var(--muted); font-size: 0.68rem; font-variant-numeric: tabular-nums; }
+.audit-event { color: var(--navy); font-weight: 600; }
+.audit-detail { color: var(--ink-soft); font-family: var(--mono); font-size: 0.68rem; width: 100%; word-break: break-word; }
+
 @media (max-width: 860px) {
   .chat-layout { flex-direction: column; height: auto; }
   .chat-main { min-height: 60dvh; }

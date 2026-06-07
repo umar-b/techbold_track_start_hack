@@ -274,3 +274,20 @@ def test_runs_list_and_stats_endpoints(env, monkeypatch):
     assert stats["total"] >= 1
     assert sum(stats["by_status"].values()) == stats["total"]
     assert "active_sessions" in stats
+
+
+def test_audit_trail_endpoint_returns_redacted_entries(env, monkeypatch):
+    client, _ = env
+    _script(monkeypatch, [
+        {"action": "plan", "root_cause": "nginx down",
+         "steps": [{"command": "systemctl enable --now nginx"}], "validation": []},
+    ])
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+
+    body = client.get(f"/api/runs/{rid}/audit").json()
+    assert body["run_id"] == rid
+    events = [e["event"] for e in body["entries"]]
+    assert "run_started" in events and "plan_proposed" in events
+    assert all("ts" in e for e in body["entries"])
+
+    assert client.get("/api/runs/nope/audit").status_code == 404

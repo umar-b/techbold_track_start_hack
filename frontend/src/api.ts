@@ -1,4 +1,4 @@
-import type { ActivityDraft, CustomerSystem, PlanStepEdit, Run, Ticket } from "./types";
+import type { ActivityDraft, AuditEntry, CustomerSystem, PlanStepEdit, Run, Ticket } from "./types";
 
 export const BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8000";
 
@@ -137,6 +137,8 @@ export const api = {
     request(`/api/runs/${id}/abort`, { method: "POST", body: "{}" }),
   activityDraft: (id: string): Promise<ActivityDraft> =>
     request(`/api/runs/${id}/activity-draft`),
+  auditTrail: (id: string): Promise<{ run_id: string; entries: AuditEntry[] }> =>
+    request(`/api/runs/${id}/audit`),
   submitActivity: (id: string, body: ActivityDraft & { set_done: boolean }): Promise<{ run: Run }> =>
     request(`/api/runs/${id}/submit-activity`, { method: "POST", body: JSON.stringify(body) }),
 };
