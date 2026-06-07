@@ -161,3 +161,20 @@ def test_systemctl_state_change_is_still_gated():
     assert check_command("systemctl enable --now nginx").tier is RiskTier.GATED
     assert check_command("systemctl restart nginx").tier is RiskTier.GATED
     assert check_command("systemctl daemon-reload").tier is RiskTier.GATED
+
+
+def test_placeholder_command_is_blocked():
+    # The model sometimes writes a placeholder expecting to fill it from a prior step;
+    # plan steps run verbatim, so this would corrupt the file — refuse it (regression: 7005).
+    heredoc = ("sudo tee /etc/systemd/system/metrics-ingest.service <<'EOF'\n"
+               "ExecStart=/ACTUAL/PATH/FOUND/IN/PREVIOUS/STEP\nEOF")
+    assert check_command(heredoc).tier is RiskTier.BLOCKED
+    assert check_command("sudo sed -i 's|x|<dbname>|' /opt/app.conf").tier is RiskTier.BLOCKED
+    assert check_command("sudo cp file /path/to/dest").tier is RiskTier.BLOCKED
+
+
+def test_real_paths_are_not_flagged_as_placeholders():
+    # Concrete, real-looking commands must NOT trip the placeholder guard.
+    assert check_command("systemctl status metrics-ingest.service").tier is RiskTier.SAFE
+    assert check_command("sudo systemctl enable --now metrics-ingest.service").tier is RiskTier.GATED
+    assert check_command("sudo sed -i 's/127.0.0.1/0.0.0.0/' /opt/metrics-ingest/app.py").tier is RiskTier.GATED

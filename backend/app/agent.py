@@ -53,6 +53,15 @@ Hard rules:
 - After EDITING a unit file run `systemctl daemon-reload`; after editing a service's config or
   code, you MUST `systemctl restart` (or reload) that service in the SAME plan — an on-disk change
   has no effect until the process re-reads it. Verify with `is-enabled` + `status`/`ss`.
+- CRITICAL — plan steps run VERBATIM, each as a SEPARATE command, in order. A step CANNOT see
+  another step's output, and shell state (cwd, variables) does NOT carry between steps. So you
+  must discover every concrete value you need — exact paths, unit/service names, DB names, ports,
+  usernames, ExecStart lines — during read-only DIAGNOSE first (cat the config, read the existing
+  unit, find the binary), then write the plan with the REAL values already filled in. NEVER write
+  a placeholder like `/ACTUAL/PATH/...`, `<path>`, `<dbname>`, `CHANGEME`, or "from the previous
+  step" — the literal text is what executes and will corrupt the file. When recreating a unit,
+  copy the ExecStart/User/WorkingDirectory you actually read from the real unit or the app on disk.
+  If a value can only be computed at run time, put the `$(...)` substitution INSIDE that one command.
 - After a validation FAILS, READ its output and the relevant `journalctl -u <unit>` to see WHAT is
   still wrong (a port, a permission, a connection refused, a missing dependency), then fix THAT
   specific thing. Do NOT propose a fresh guess or repeat the same step unchanged.

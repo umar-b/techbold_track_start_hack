@@ -73,6 +73,16 @@ _BLOCK_SEG = [
     (rf"\bchown\b.*{_RECURSIVE}.*{_BLANKET}", "Recursive chown of a system path"),
 ]
 
+# Unresolved placeholders the model emits when it tries to reference a value it has not
+# discovered yet (plan steps run verbatim and cannot see prior output). Running these corrupts
+# files/commands, so refuse — the agent must discover the concrete value during diagnosis first.
+_PLACEHOLDER = re.compile(
+    r"ACTUAL[_/]PATH|/PATH/TO/|PREVIOUS[_/]STEP|FROM[_/]PREVIOUS|FOUND[_/]IN[_/]"
+    r"|CHANGE_?ME\b|FILL[_-]?(?:IN|ME)\b|REPLACE_?ME\b|PLACEHOLDER"
+    r"|<(?:path|dir|unit|service|svc|db|dbname|db_name|name|value|file|filename|user|username|port|host|ip|your[\w-]*)>",
+    re.IGNORECASE,
+)
+
 # Any reference to these paths is treated as secret access and BLOCKED.
 _SECRET_PATH = re.compile(
     r"(?:/etc/g?shadow\b|\bid_rsa\b|\bid_dsa\b|\bid_ecdsa\b|\bid_ed25519\b"
@@ -204,6 +214,10 @@ def check_command(command: str) -> SafetyVerdict:
     cmd = " ".join((command or "").split())
     if not cmd:
         return SafetyVerdict(RiskTier.BLOCKED, "Empty command")
+    if _PLACEHOLDER.search(cmd):
+        return SafetyVerdict(RiskTier.BLOCKED,
+                             "Unresolved placeholder — discover the real value (path/name/port) "
+                             "in a read-only diagnostic first, then use it literally")
     if _SECRET_PATH.search(cmd):
         return SafetyVerdict(RiskTier.BLOCKED, "Accessing a secret/credential path")
     for pat, reason in _BLOCK_WHOLE:
