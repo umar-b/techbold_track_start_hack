@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, Loader2, Server, CircleCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Loader2, Server, CircleCheck, ListChecks, Terminal, X } from "lucide-react";
 import type { Activity, CustomerSystem, Ticket } from "../types";
 import { api, getErrorMessage } from "../api";
-import { formatRelative } from "../lib/format";
+import { formatRelative, parseListish } from "../lib/format";
+import { CopyButton } from "./CopyButton";
 
 type Props = {
   ticketId: number;
@@ -142,20 +143,32 @@ export function TicketDetail({ ticketId, onBack, onStartChat }: Props) {
   );
 }
 
-const RESOLUTION_FIELDS: { key: keyof Activity; label: string }[] = [
+// The narrative of the fix stays inline; the step-by-step actions and the raw
+// commands are detail that belongs behind a "view detail" affordance, not dumped
+// into the ticket header.
+const NARRATIVE_FIELDS: { key: keyof Activity; label: string }[] = [
   { key: "summary", label: "Summary" },
   { key: "root_cause", label: "Root cause" },
-  { key: "actions_taken", label: "Actions taken" },
-  { key: "commands_summary", label: "Commands" },
   { key: "validation_result", label: "Validation" },
 ];
 
+/** A resolution field that may arrive as prose or as a stringified list →
+ * always a clean array of items (single-element when it was prose). */
+function toItems(value: string | undefined): string[] {
+  if (typeof value !== "string" || !value.trim()) return [];
+  return parseListish(value) ?? [value.trim()];
+}
+
 function ResolutionPanel({ activity }: { activity: Activity }) {
-  const rows = RESOLUTION_FIELDS.filter((f) => {
+  const [detailOpen, setDetailOpen] = useState(false);
+  const rows = NARRATIVE_FIELDS.filter((f) => {
     const v = activity[f.key];
     return typeof v === "string" && v.trim();
   });
-  const mono = new Set<keyof Activity>(["commands_summary"]);
+  const actions = toItems(activity.actions_taken);
+  const commands = toItems(activity.commands_summary);
+  const hasDetail = actions.length > 0 || commands.length > 0;
+
   return (
     <div className="resolution">
       <div className="resolution-head">
@@ -166,13 +179,120 @@ function ResolutionPanel({ activity }: { activity: Activity }) {
         )}
       </div>
       <dl className="resolution-dl">
-        {rows.map((f) => (
-          <div key={String(f.key)} className="resolution-row">
-            <dt>{f.label}</dt>
-            <dd className={mono.has(f.key) ? "mono" : undefined}>{activity[f.key] as string}</dd>
-          </div>
-        ))}
+        {rows.map((f) => {
+          const value = activity[f.key] as string;
+          const list = parseListish(value);
+          return (
+            <div key={String(f.key)} className="resolution-row">
+              <dt>{f.label}</dt>
+              {list ? (
+                <dd>
+                  <ul className="resolution-items">
+                    {list.map((item, i) => <li key={i}>{item}</li>)}
+                  </ul>
+                </dd>
+              ) : (
+                <dd>{value}</dd>
+              )}
+            </div>
+          );
+        })}
       </dl>
+
+      {hasDetail && (
+        <div className="resolution-foot">
+          <button type="button" className="btn btn-ghost resolution-detail-btn" onClick={() => setDetailOpen(true)}>
+            View actions &amp; commands
+          </button>
+          <span className="resolution-foot-meta">
+            {actions.length > 0 && `${actions.length} action${actions.length === 1 ? "" : "s"}`}
+            {actions.length > 0 && commands.length > 0 && " · "}
+            {commands.length > 0 && `${commands.length} command${commands.length === 1 ? "" : "s"}`}
+          </span>
+        </div>
+      )}
+
+      <ResolutionDetailModal
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        solvedWhen={activity.end_datetime}
+        actions={actions}
+        commands={commands}
+      />
     </div>
+  );
+}
+
+function ResolutionDetailModal({
+  open, onClose, solvedWhen, actions, commands,
+}: {
+  open: boolean;
+  onClose: () => void;
+  solvedWhen?: string;
+  actions: string[];
+  commands: string[];
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  // Drive the native <dialog> from React state so it gets the top-layer + focus
+  // trap + Escape handling for free, without leaving the stacking context.
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    else if (!open && d.open) d.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      className="res-modal"
+      onClose={onClose}
+      onClick={(e) => { if (e.target === ref.current) onClose(); }}
+    >
+      <div className="res-modal-head">
+        <span className="resolution-icon"><CircleCheck size={16} /></span>
+        <div className="res-modal-titles">
+          <h2 className="res-modal-title">Resolution detail</h2>
+          {solvedWhen && <span className="res-modal-sub">solved {formatRelative(solvedWhen)}</span>}
+        </div>
+        <button type="button" className="icon-btn res-modal-close" aria-label="Close detail" onClick={onClose}>
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="res-modal-body">
+        {actions.length > 0 && (
+          <section className="res-section">
+            <h3 className="res-section-title"><ListChecks size={13} /> Actions taken</h3>
+            <ol className="res-actions">
+              {actions.map((a, i) => (
+                <li key={i}>
+                  <span className="res-action-num">{i + 1}</span>
+                  <span className="res-action-text">{a}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {commands.length > 0 && (
+          <section className="res-section">
+            <h3 className="res-section-title">
+              <Terminal size={13} /> Commands run
+              <span className="res-section-count">{commands.length}</span>
+            </h3>
+            <ul className="res-commands">
+              {commands.map((c, i) => (
+                <li key={i}>
+                  <code>{c}</code>
+                  <CopyButton text={c} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    </dialog>
   );
 }

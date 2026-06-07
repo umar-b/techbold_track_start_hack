@@ -176,6 +176,14 @@ p { margin: 0; }
 @media (max-width: 560px) {
   .header-identity-team { display: none; }
 }
+/* On narrow screens the brand sub-label and the technician's name were crowding
+   the nav tabs off the right edge. Drop them to non-essentials first so the three
+   primary nav tabs stay reachable; the brand mark and the person icon remain. */
+@media (max-width: 640px) {
+  .app-header { gap: 0.7rem; padding: 0 0.85rem; }
+  .brand-dot, .brand-product { display: none; }
+  .header-identity-name { display: none; }
+}
 
 .app-main {
   max-width: 1180px;
@@ -619,7 +627,6 @@ p { margin: 0; }
 .resolution {
   margin-top: 0.75rem;
   border: 1px solid var(--safe-border);
-  border-left: 3px solid var(--safe);
   background: var(--safe-bg);
   border-radius: var(--radius);
   padding: 1rem 1.25rem;
@@ -650,6 +657,190 @@ p { margin: 0; }
 }
 .resolution-row dd { margin: 0; font-size: 0.9rem; color: var(--ink); line-height: 1.5; }
 .resolution-row dd.mono { font-family: var(--mono); font-size: 0.8rem; word-break: break-word; }
+.resolution-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.resolution-items li {
+  position: relative;
+  padding-left: 1rem;
+  font-size: 0.9rem;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.resolution-items li::before {
+  content: "";
+  position: absolute;
+  left: 0.15rem;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--safe);
+}
+/* Resolution footer — entry point to the detail popout */
+.resolution-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--safe-border);
+}
+.resolution-detail-btn { width: auto; }
+.resolution-foot-meta {
+  font-size: 0.75rem;
+  color: var(--safe);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Resolution detail — native <dialog> popout
+   ============================================================ */
+.res-modal {
+  width: min(680px, calc(100vw - 2rem));
+  max-height: min(80vh, 720px);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
+  background: var(--surface);
+  color: var(--ink);
+  overflow: hidden;
+}
+.res-modal::backdrop {
+  background: rgba(38, 43, 75, 0.45);
+  backdrop-filter: blur(2px);
+}
+.res-modal[open] {
+  display: flex;
+  flex-direction: column;
+  animation: res-modal-in var(--dur-std) var(--ease-out);
+}
+@keyframes res-modal-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .res-modal[open] { animation: none; }
+}
+
+.res-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem 1.25rem;
+  background: var(--navy);
+  color: #fff;
+  flex-shrink: 0;
+}
+.res-modal-head .resolution-icon { color: var(--gold); }
+.res-modal-titles { display: flex; flex-direction: column; gap: 0.1rem; }
+.res-modal-title {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: #fff;
+  margin: 0;
+}
+.res-modal-sub { font-size: 0.72rem; color: rgba(255, 255, 255, 0.6); }
+.res-modal-close {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.7);
+}
+.res-modal-close:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.res-modal-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+.res-modal-body {
+  padding: 1.25rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.res-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 0.75rem;
+}
+.res-section-count {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--navy-mid);
+  background: var(--navy-subtle);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  letter-spacing: 0;
+}
+
+.res-actions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.res-actions li { display: flex; gap: 0.65rem; align-items: flex-start; }
+.res-action-num {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--safe-bg);
+  border: 1px solid var(--safe-border);
+  color: var(--safe);
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.05rem;
+}
+.res-action-text { flex: 1; font-size: 0.9rem; line-height: 1.5; color: var(--ink); }
+
+.res-commands {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.res-commands li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--warm);
+  border: 1px solid var(--border-mid);
+  border-radius: 2px;
+  padding: 0.4rem 0.5rem 0.4rem 0.65rem;
+}
+.res-commands code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--navy);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.res-commands .icon-btn { flex-shrink: 0; }
 @media (max-width: 600px) {
   .resolution-row { grid-template-columns: 1fr; gap: 0.15rem; }
 }
@@ -998,7 +1189,17 @@ p { margin: 0; }
   .detail-grid { grid-template-columns: 1fr; }
   .run { grid-template-columns: 1fr; }
   .run-side { position: static; }
-  .ticket-row { grid-template-columns: 1fr auto; }
+  /* Drop the rigid grid: a stretched grid cell turned status badges into
+     full-width colored bars. Flex-wrap lets each badge hug its own content
+     and flow onto a second line under the title. */
+  .ticket-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.6rem;
+    row-gap: 0.5rem;
+  }
+  .ticket-title { flex: 1 1 55%; }
   .ticket-customer { display: none; }
 }
 
@@ -1030,7 +1231,6 @@ p { margin: 0; }
   padding: 0.7rem 0.85rem;
   background: var(--surface);
   border: 1px solid var(--border-mid);
-  border-left-width: 3px;
   border-radius: var(--radius);
   box-shadow: var(--shadow-float);
   font-size: 0.875rem;
@@ -1039,11 +1239,11 @@ p { margin: 0; }
 }
 .toast-icon { display: flex; flex-shrink: 0; }
 .toast-msg { flex: 1; line-height: 1.4; }
-.toast--success { border-left-color: var(--safe); }
+/* State carried by a full tinted border + the colored icon, not a side-stripe. */
+.toast--success { border-color: var(--safe-border); }
 .toast--success .toast-icon { color: var(--safe); }
-.toast--error { border-left-color: var(--danger); }
+.toast--error { border-color: var(--danger-border); }
 .toast--error .toast-icon { color: var(--danger); }
-.toast--info { border-left-color: var(--navy-mid); }
 .toast--info .toast-icon { color: var(--navy-mid); }
 
 /* ============================================================
@@ -1531,6 +1731,22 @@ kbd {
   padding: 0.6rem 0.75rem;
   width: auto;
 }
+
+/* Run stage label in the input bar — takes the slack so the abort button sits
+   at the far right. Quiet, capitalized, mirrors the run status. */
+.chat-stage-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.01em;
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conn-text { color: inherit; }
 
 /* Live-stream connection indicator */
 .conn {

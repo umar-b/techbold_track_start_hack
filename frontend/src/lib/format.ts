@@ -27,6 +27,37 @@ export function formatRelative(iso: string | undefined): string {
   return new Date(t).toLocaleDateString();
 }
 
+/**
+ * Some resolution fields arrive from the ERP as the *string form* of a list
+ * (`"['systemctl restart nginx', 'systemctl status nginx']"`), which would
+ * otherwise render with its brackets and quotes showing. Detect that shape and
+ * recover the items so the UI can show a clean list; return null when the value
+ * is ordinary prose. Tolerant of both JSON (double-quoted) and Python-repr
+ * (single-quoted) arrays, and of commas inside the items themselves.
+ */
+export function parseListish(value: string): string[] | null {
+  const s = value.trim();
+  if (!(s.startsWith("[") && s.endsWith("]"))) return null;
+  try {
+    const parsed = JSON.parse(s);
+    if (Array.isArray(parsed)) {
+      const items = parsed.map((v) => String(v).trim()).filter(Boolean);
+      return items.length ? items : null;
+    }
+  } catch {
+    /* not valid JSON — fall through to quoted-literal extraction */
+  }
+  const items: string[] = [];
+  const re = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const raw = m[1] ?? m[2] ?? "";
+    const unescaped = raw.replace(/\\(['"\\])/g, "$1").trim();
+    if (unescaped) items.push(unescaped);
+  }
+  return items.length ? items : null;
+}
+
 /** Elapsed wall-clock as `m:ss` (or `h:mm:ss` past an hour). Negative → "0:00". */
 export function formatElapsed(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));

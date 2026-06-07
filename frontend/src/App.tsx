@@ -80,7 +80,7 @@ export default function App() {
       <Toaster />
       <header className="app-header">
         <div className="brand">
-          <span className="brand-name">techbold</span>
+          <span className="brand-name">boldtech</span>
           <span className="brand-dot">·</span>
           <span className="brand-product">Service Desk Autopilot</span>
         </div>

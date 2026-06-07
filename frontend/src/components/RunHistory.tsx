@@ -52,7 +52,7 @@ export function RunHistory({ onOpenTicket }: Props) {
       {stats && (
         <div className="stat-strip">
           <Stat label="Total runs" value={stats.total} />
-          <Stat label="Active" value={activeCount} accent />
+          <Stat label="Active" value={activeCount} accent={activeCount > 0} />
           <Stat label="Live sessions" value={stats.active_sessions} />
         </div>
       )}
