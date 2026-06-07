@@ -6,6 +6,7 @@ audit log is mirrored to a per-run file so the trail survives a restart.
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -30,10 +31,11 @@ class RunStore:
         self._runs: Dict[str, Dict[str, Any]] = {}
         self._audits: Dict[str, AuditLog] = {}
         # One reused SSH connection per run, owned here (run-control state, ADR-0008)
-        # rather than as ambient module-global state in the route layer.
-        # TODO: no idle-timeout eviction — a run parked at awaiting_plan_approval the
-        # technician never resolves keeps its TCP connection until the process exits.
+        # rather than as ambient module-global state in the route layer. The reaper
+        # (reap_idle_sessions) evicts connections left idle past a TTL — e.g. a run
+        # parked at awaiting_plan_approval — using the monotonic last-touch below.
         self._sessions: Dict[str, SSHRunner] = {}
+        self._session_last_used: Dict[str, float] = {}
         # Per-run lock serialising a command-execution against a close, so an abort on
         # another thread cannot close the SSH transport mid-command (the run loop now
         # runs on a background worker — ADR-0008).
@@ -71,6 +73,17 @@ class RunStore:
 
         return list(self._runs.values())
 
+    def summary(self) -> Dict[str, Any]:
+        """Aggregate run counts by status + live-session count (for /api/stats)."""
+        by_status: Dict[str, int] = {}
+        for run in self._runs.values():
+            by_status[run["status"]] = by_status.get(run["status"], 0) + 1
+        return {
+            "total": len(self._runs),
+            "by_status": by_status,
+            "active_sessions": len(self._sessions),
+        }
+
     def session(self, run: Dict[str, Any], system: Dict[str, Any]) -> SSHRunner:
         """The run's live SSH connection, created+connected on first use and reused.
 
@@ -90,6 +103,7 @@ class RunStore:
             self._sessions[run["id"]] = sess
         else:
             sess.ensure_connected()  # reconnect if the connection dropped during an approval wait
+        self._session_last_used[run["id"]] = time.monotonic()
         return sess
 
     def lock(self, run_id: str) -> threading.Lock:
@@ -102,12 +116,38 @@ class RunStore:
             return lock
 
     def close_session(self, run_id: str) -> None:
+        self._session_last_used.pop(run_id, None)
         sess = self._sessions.pop(run_id, None)
         if sess is not None:
             try:
                 sess.__exit__(None, None, None)
             except Exception:  # noqa: BLE001
                 pass
+
+    def reap_idle_sessions(self, ttl_seconds: float, now: Optional[float] = None) -> int:
+        """Close SSH sessions untouched for longer than ttl_seconds; return the count.
+
+        Takes each run's lock non-blockingly: a session with a command in flight
+        holds the lock, so it is skipped (it is not idle anyway). The next command
+        on a reaped run transparently reconnects via session(). ttl<=0 disables.
+        """
+        if ttl_seconds <= 0:
+            return 0
+        current = time.monotonic() if now is None else now
+        reaped = 0
+        for run_id in list(self._sessions.keys()):
+            last = self._session_last_used.get(run_id, current)
+            if current - last < ttl_seconds:
+                continue
+            lock = self.lock(run_id)
+            if not lock.acquire(blocking=False):
+                continue  # a command is running on this session — not idle
+            try:
+                self.close_session(run_id)
+                reaped += 1
+            finally:
+                lock.release()
+        return reaped
 
 
 # The API imports one shared store so all routes see the same demo state.

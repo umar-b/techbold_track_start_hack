@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     SSH_COMMAND_TIMEOUT: float = 60.0
     AGENT_MAX_STEPS: int = 25
 
+    # Idle SSH-session reaper: a run parked at awaiting_plan_approval holds its TCP
+    # connection open. A background sweeper closes sessions untouched for longer than
+    # the TTL; the next command on that run transparently reconnects. 0 disables it.
+    SSH_SESSION_IDLE_TTL: float = 300.0
+    SSH_SESSION_REAP_INTERVAL: float = 60.0
+
     # Memory (ADR-0001) + audit (ADR-0008)
     MEMORY_DIR: str = "backend/memory"
     AUDIT_DIR: str = "data/audit"

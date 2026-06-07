@@ -51,6 +51,7 @@ def env(monkeypatch, tmp_path):
     main_mod.store._runs.clear()
     main_mod.store._audits.clear()
     main_mod.store._sessions.clear()
+    main_mod.store._session_last_used.clear()
     fake = FakePhoenix()
     app = create_app()
     app.dependency_overrides[get_phoenix] = lambda: fake
@@ -252,3 +253,23 @@ def test_tickets_proxy(env):
     client, _ = env
     assert client.get("/api/tickets").status_code == 200
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_runs_list_and_stats_endpoints(env, monkeypatch):
+    client, _ = env
+    _script(monkeypatch, [
+        {"action": "plan", "root_cause": "nginx down",
+         "steps": [{"command": "systemctl enable --now nginx"}], "validation": []},
+    ])
+    rid = client.post("/api/runs", json={"ticket_id": 7001}).json()["id"]
+
+    listed = client.get("/api/runs").json()
+    row = next(x for x in listed if x["id"] == rid)
+    assert row["ticket_id"] == 7001
+    assert row["status"] == "awaiting_plan_approval"
+    assert isinstance(row["steps"], int) and "created_at" in row
+
+    stats = client.get("/api/stats").json()
+    assert stats["total"] >= 1
+    assert sum(stats["by_status"].values()) == stats["total"]
+    assert "active_sessions" in stats

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
@@ -47,6 +48,23 @@ REJECTED_DIAGNOSE_LIMIT = 2
 # the browser sees diagnostics stream in over SSE (ADR-0008). `_submit` is overridden to
 # run inline in tests.
 _executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="runloop")
+
+# Background sweeper that evicts idle SSH sessions (e.g. a run parked at
+# awaiting_plan_approval). Started on app startup, stopped on shutdown.
+_reaper_stop = threading.Event()
+
+
+def _reaper_loop() -> None:
+    log = logging.getLogger("api")
+    interval = settings.SSH_SESSION_REAP_INTERVAL
+    ttl = settings.SSH_SESSION_IDLE_TTL
+    while not _reaper_stop.wait(interval):
+        try:
+            reaped = store.reap_idle_sessions(ttl)
+            if reaped:
+                log.info("reaped %d idle SSH session(s)", reaped)
+        except Exception:  # noqa: BLE001 - the sweeper must never die on one bad cycle
+            log.exception("idle-session reaper cycle failed")
 
 
 def _guarded(fn, *args) -> None:
@@ -306,13 +324,32 @@ def create_app() -> FastAPI:
     app = FastAPI(title="AI Service Desk Autopilot — Team Backend", version="1.0.0")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+    @app.on_event("startup")
+    def _startup():
+        if settings.SSH_SESSION_IDLE_TTL > 0 and settings.SSH_SESSION_REAP_INTERVAL > 0:
+            _reaper_stop.clear()
+            threading.Thread(target=_reaper_loop, name="ssh-session-reaper", daemon=True).start()
+
     @app.on_event("shutdown")
     def _shutdown():
+        _reaper_stop.set()
         _executor.shutdown(cancel_futures=True)
 
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/api/runs")
+    def list_runs():
+        """A compact list of all runs this process knows about (in-memory, ADR-0008)."""
+        return [{"id": r["id"], "ticket_id": r["ticket_id"], "status": r["status"],
+                 "steps": len(r["steps"]), "created_at": r["created_at"]}
+                for r in store.all()]
+
+    @app.get("/api/stats")
+    def stats():
+        """Run counts by status + live SSH-session count, for an operations view."""
+        return store.summary()
 
     @app.get("/api/me")
     def me(phoenix: PhoenixClient = Depends(get_phoenix)):
